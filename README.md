@@ -52,10 +52,10 @@ Pro vývoj, správy kódu a spuštění projektu jsou použity následující n�
 
 | Část aplikace | Technologie | Zdůvodnění volby |
 | :--- | :--- | :--- |
-| **Frontend** | **Astro.build + Tailwind CSS + LiaScript** | **Astro** zajišťuje bleskovou rychlost a minimální JS bundle. **LiaScript** umožňuje transformaci Markdownu na interaktivní kurzy. **Tailwind CSS** garantuje čisté UI. |
-| **Backend** | **Python (FastAPI / Django)** | **Python** poskytuje nativní ekosystém pro práci s AI SDK, manipulaci s dokumenty (`pypdf`, `python-docx`) a tvorbu REST API endpoints. |
+| **Frontend** | **Astro.build + Tailwind CSS** | **Astro** zajišťuje bleskovou rychlost a minimální JS bundle. **LiaScript** umožňuje transformaci Markdownu na interaktivní kurzy. **Tailwind CSS** garantuje čisté UI. |
+| **Backend** | **Python (FastAPI)** | **Python** poskytuje nativní ekosystém pro práci s AI SDK, manipulaci s dokumenty (`pypdf`, `python-docx`) a tvorbu REST API endpoints. |
 | **AI API** | **Google Gemini 1.5 Flash API** | Bezplatný vývojářský tier (až 15 požadavků/min), obrovské kontextové okno (zpracování dlouhých PDF) a výborná čeština. |
-| **Databáze** | **PostgreSQL (Supabase / Render)** | Relační databáze pro strukturované ukládání uživatelů, předmětů, extraktů z dokumentů a kvízů. |
+| **Databáze** | **PostgreSQL (Render)** | Relační databáze pro strukturované ukládání uživatelů, předmětů, extraktů z dokumentů a kvízů. |
 | **Deployment** | **Vercel** (Frontend) + **Render.com** (Backend) | Bezplatné hostingové platformy s automatickým CI/CD přímo z GitHub repozitáře. |
 
 ---
