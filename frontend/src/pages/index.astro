@@ -1,0 +1,117 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Domů">
+  <section class="bg-white rounded-2xl shadow p-6 mb-8">
+    <h1 class="text-2xl font-bold mb-1">Nahraj studijní materiál</h1>
+    <p class="text-slate-500 mb-4">PDF, DOCX nebo TXT. AI z něj vytvoří shrnutí, test a kartičky.</p>
+
+    <form id="upload-form" class="space-y-4">
+      <label class="block border-2 border-dashed border-indigo-300 rounded-xl p-8 text-center cursor-pointer hover:bg-indigo-50">
+        <span id="file-label" class="text-indigo-600 font-medium">Klikni a vyber soubor</span>
+        <input id="file" type="file" accept=".pdf,.docx,.txt" class="hidden" required />
+      </label>
+
+      <div>
+        <label class="block text-sm font-medium mb-1" for="macro">Makro (co se má vygenerovat)</label>
+        <select id="macro" class="w-full border rounded-lg p-2"></select>
+        <p id="macro-desc" class="text-sm text-slate-500 mt-1"></p>
+      </div>
+
+      <button id="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg py-3 disabled:opacity-50">
+        Vytvořit studijní balíček
+      </button>
+      <p id="status" class="text-sm"></p>
+    </form>
+  </section>
+
+  <section>
+    <h2 class="text-xl font-bold mb-3">Moje materiály</h2>
+    <div id="docs" class="grid gap-3"></div>
+  </section>
+</Layout>
+
+<script>
+  import { API } from "../config.js";
+
+  const form = document.getElementById("upload-form");
+  const fileInput = document.getElementById("file");
+  const fileLabel = document.getElementById("file-label");
+  const macroSel = document.getElementById("macro");
+  const macroDesc = document.getElementById("macro-desc");
+  const status = document.getElementById("status");
+  const btn = document.getElementById("submit");
+  const docsEl = document.getElementById("docs");
+
+  let macros = [];
+
+  async function loadMacros() {
+    try {
+      macros = await (await fetch(`${API}/api/macros`)).json();
+      macroSel.innerHTML = macros.map(m => `<option value="${m.key}">${m.label}</option>`).join("");
+      showDesc();
+    } catch {
+      status.textContent = "⚠️ Backend neběží (spusť uvicorn).";
+      status.className = "text-sm text-red-600";
+    }
+  }
+  function showDesc() {
+    const m = macros.find(x => x.key === macroSel.value);
+    macroDesc.textContent = m ? m.desc : "";
+  }
+
+  async function loadDocs() {
+    try {
+      const docs = await (await fetch(`${API}/api/documents`)).json();
+      if (!docs.length) {
+        docsEl.innerHTML = `<p class="text-slate-500">Zatím nic. Nahraj první soubor 👆</p>`;
+        return;
+      }
+      docsEl.innerHTML = docs.map(d => `
+        <div class="bg-white rounded-xl shadow p-4 flex items-center justify-between">
+          <a href="/doc?id=${d.id}" class="flex-1">
+            <div class="font-semibold">${escapeHtml(d.title)}</div>
+            <div class="text-sm text-slate-500">${d.questions} otázek · ${d.cards} kartiček</div>
+          </a>
+          <button data-del="${d.id}" class="text-red-500 text-sm hover:underline">Smazat</button>
+        </div>`).join("");
+      docsEl.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", async () => {
+        if (!confirm("Opravdu smazat?")) return;
+        await fetch(`${API}/api/documents/${b.dataset.del}`, { method: "DELETE" });
+        loadDocs();
+      }));
+    } catch { /* backend neběží, hlášku už ukazuje loadMacros */ }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  macroSel.addEventListener("change", showDesc);
+  fileInput.addEventListener("change", () => {
+    fileLabel.textContent = fileInput.files[0] ? fileInput.files[0].name : "Klikni a vyber soubor";
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    fd.append("file", fileInput.files[0]);
+    fd.append("macro", macroSel.value);
+    btn.disabled = true;
+    status.className = "text-sm text-indigo-600";
+    status.textContent = "⏳ AI agenti pracují… může to trvat 20–60 sekund.";
+    try {
+      const r = await fetch(`${API}/api/documents`, { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Neznámá chyba");
+      window.location.href = `/doc?id=${data.id}`;
+    } catch (err) {
+      status.className = "text-sm text-red-600";
+      status.textContent = "❌ " + err.message;
+      btn.disabled = false;
+    }
+  });
+
+  loadMacros();
+  loadDocs();
+</script>

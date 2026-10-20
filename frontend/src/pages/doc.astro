@@ -1,0 +1,195 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Studijní balíček">
+  <a href="/" class="text-indigo-600 text-sm">← Zpět</a>
+  <div class="flex items-center justify-between mt-2 mb-4">
+    <h1 id="title" class="text-2xl font-bold">Načítám…</h1>
+    <a id="export" class="text-sm bg-white border rounded-lg px-3 py-1 hover:bg-slate-100" download="studybuddy.md">⬇ LiaScript (.md)</a>
+  </div>
+
+  <nav class="flex gap-2 mb-6">
+    <button data-tab="summary" class="tab px-4 py-2 rounded-lg font-medium">📝 Shrnutí</button>
+    <button data-tab="quiz" class="tab px-4 py-2 rounded-lg font-medium">❓ Test</button>
+    <button data-tab="cards" class="tab px-4 py-2 rounded-lg font-medium">🃏 Kartičky</button>
+  </nav>
+
+  <section id="summary" class="panel bg-white rounded-2xl shadow p-6"></section>
+  <section id="quiz" class="panel bg-white rounded-2xl shadow p-6 hidden"></section>
+  <section id="cards" class="panel bg-white rounded-2xl shadow p-6 hidden"></section>
+</Layout>
+
+<script>
+  import { API } from "../config.js";
+  import { marked } from "marked";
+  import DOMPurify from "dompurify";
+
+  const id = new URLSearchParams(location.search).get("id");
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  // ---------- záložky ----------
+  function showTab(name) {
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("hidden", p.id !== name));
+    document.querySelectorAll(".tab").forEach(t => {
+      const active = t.dataset.tab === name;
+      t.className = "tab px-4 py-2 rounded-lg font-medium " +
+        (active ? "bg-indigo-600 text-white" : "bg-white border hover:bg-slate-100");
+    });
+  }
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+  // ---------- shrnutí ----------
+  function renderSummary(doc) {
+    const el = $("#summary");
+    if (!doc.summary) { el.innerHTML = `<p class="text-slate-500">Toto makro shrnutí nevytvořilo.</p>`; return; }
+    el.innerHTML = `<div class="md">${DOMPurify.sanitize(marked.parse(doc.summary))}</div>`;
+  }
+
+  // ---------- kvíz ----------
+  function renderQuiz(doc) {
+    const el = $("#quiz");
+    const qs = doc.questions;
+    if (!qs.length) { el.innerHTML = `<p class="text-slate-500">Toto makro test nevytvořilo.</p>`; return; }
+    let i = 0, score = 0, answered = false;
+
+    function draw() {
+      if (i >= qs.length) {
+        const pct = Math.round((score / qs.length) * 100);
+        el.innerHTML = `
+          <div class="text-center py-8">
+            <div class="text-5xl mb-2">${pct >= 80 ? "🏆" : pct >= 50 ? "👍" : "📚"}</div>
+            <div class="text-2xl font-bold">${score} / ${qs.length} (${pct} %)</div>
+            <button id="again" class="mt-6 bg-indigo-600 text-white px-5 py-2 rounded-lg">Zkusit znovu</button>
+          </div>`;
+        $("#again").addEventListener("click", () => { i = 0; score = 0; draw(); });
+        return;
+      }
+      answered = false;
+      const q = qs[i];
+      el.innerHTML = `
+        <div class="text-sm text-slate-500 mb-1">Otázka ${i + 1} z ${qs.length} · skóre ${score}</div>
+        <div class="h-2 bg-slate-200 rounded mb-4"><div class="h-2 bg-indigo-600 rounded" style="width:${(i / qs.length) * 100}%"></div></div>
+        <h2 class="text-lg font-semibold mb-4">${esc(q.question)}</h2>
+        <div class="space-y-2">
+          ${q.options.map((o, k) => `
+            <button data-k="${k}" class="opt w-full text-left border rounded-lg p-3 hover:bg-indigo-50">
+              <b>${"ABCD"[k]}.</b> ${esc(o)}
+            </button>`).join("")}
+        </div>
+        <div id="fb" class="mt-4"></div>`;
+      el.querySelectorAll(".opt").forEach(b => b.addEventListener("click", () => pick(+b.dataset.k)));
+    }
+
+    function pick(k) {
+      if (answered) return;
+      answered = true;
+      const q = qs[i];
+      const ok = k === q.correct;
+      if (ok) score++;
+      el.querySelectorAll(".opt").forEach((b, idx) => {
+        b.disabled = true;
+        if (idx === q.correct) b.className = "opt w-full text-left border rounded-lg p-3 bg-green-100 border-green-500";
+        else if (idx === k) b.className = "opt w-full text-left border rounded-lg p-3 bg-red-100 border-red-500";
+      });
+      $("#fb").innerHTML = `
+        <div class="p-3 rounded-lg ${ok ? "bg-green-50" : "bg-red-50"}">
+          <b>${ok ? "✅ Správně!" : "❌ Špatně."}</b> ${esc(q.explanation || "")}
+        </div>
+        <button id="next" class="mt-3 bg-indigo-600 text-white px-5 py-2 rounded-lg">
+          ${i + 1 === qs.length ? "Zobrazit výsledek" : "Další →"}
+        </button>`;
+      $("#next").addEventListener("click", () => { i++; draw(); });
+    }
+    draw();
+  }
+
+  // ---------- kartičky ----------
+  function renderCards(doc) {
+    const el = $("#cards");
+    if (!doc.cards.length) { el.innerHTML = `<p class="text-slate-500">Toto makro kartičky nevytvořilo.</p>`; return; }
+    const today = new Date().toISOString().slice(0, 10);
+    let all = false;
+    let deck = [], i = 0;
+
+    function buildDeck() {
+      deck = doc.cards.filter(c => all || c.next_review <= today);
+      i = 0;
+    }
+
+    function draw() {
+      if (!deck.length) {
+        el.innerHTML = `
+          <div class="text-center py-8">
+            <div class="text-4xl mb-2">🎉</div>
+            <p class="font-semibold">Na dnes máš hotovo!</p>
+            <p class="text-slate-500 text-sm">Další kartičky se objeví podle intervalového opakování.</p>
+            <button id="all" class="mt-4 bg-indigo-600 text-white px-5 py-2 rounded-lg">Procvičit všechny</button>
+          </div>`;
+        $("#all").addEventListener("click", () => { all = true; buildDeck(); draw(); });
+        return;
+      }
+      if (i >= deck.length) {
+        el.innerHTML = `
+          <div class="text-center py-8">
+            <div class="text-4xl mb-2">✅</div>
+            <p class="font-semibold">Hotovo! Prošel jsi ${deck.length} kartiček.</p>
+            <button id="restart" class="mt-4 bg-indigo-600 text-white px-5 py-2 rounded-lg">Znovu</button>
+          </div>`;
+        $("#restart").addEventListener("click", () => { buildDeck(); draw(); });
+        return;
+      }
+      const c = deck[i];
+      el.innerHTML = `
+        <div class="text-sm text-slate-500 mb-3">Kartička ${i + 1} z ${deck.length} · krabička ${c.box}/5</div>
+        <div id="card" class="flip cursor-pointer h-56">
+          <div class="flip-inner h-full">
+            <div class="face bg-indigo-50 border-2 border-indigo-200 rounded-2xl flex items-center justify-center p-6 text-center text-xl font-semibold">${esc(c.front)}</div>
+            <div class="face back bg-emerald-50 border-2 border-emerald-200 rounded-2xl flex items-center justify-center p-6 text-center text-lg">${esc(c.back)}</div>
+          </div>
+        </div>
+        <p class="text-center text-sm text-slate-500 mt-2">Klikni na kartičku pro otočení</p>
+        <div id="rate" class="hidden mt-4 flex gap-3 justify-center">
+          <button id="no" class="bg-red-100 text-red-700 px-6 py-2 rounded-lg font-semibold">✗ Neumím</button>
+          <button id="yes" class="bg-green-100 text-green-700 px-6 py-2 rounded-lg font-semibold">✓ Umím</button>
+        </div>`;
+      $("#card").addEventListener("click", () => {
+        $("#card").classList.toggle("flipped");
+        $("#rate").classList.remove("hidden");
+      });
+      $("#yes").addEventListener("click", () => rate(c, true));
+      $("#no").addEventListener("click", () => rate(c, false));
+    }
+
+    async function rate(c, correct) {
+      try {
+        const r = await (await fetch(`${API}/api/cards/${c.id}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ correct }),
+        })).json();
+        c.box = r.box; c.next_review = r.next_review;
+      } catch { /* když selže uložení, pokračujeme dál */ }
+      i++; draw();
+    }
+
+    buildDeck(); draw();
+  }
+
+  // ---------- načtení ----------
+  async function init() {
+    if (!id) { $("#title").textContent = "Chybí ID dokumentu"; return; }
+    try {
+      const r = await fetch(`${API}/api/documents/${id}`);
+      if (!r.ok) throw new Error();
+      const doc = await r.json();
+      $("#title").textContent = doc.title;
+      $("#export").setAttribute("href", `${API}/api/documents/${id}/liascript`);
+      renderSummary(doc); renderQuiz(doc); renderCards(doc);
+      showTab(doc.summary ? "summary" : doc.questions.length ? "quiz" : "cards");
+    } catch {
+      $("#title").textContent = "Dokument se nepodařilo načíst";
+    }
+  }
+  init();
+</script>

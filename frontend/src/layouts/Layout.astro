@@ -1,0 +1,24 @@
+---
+import "../styles/global.css";
+const { title = "StudyBuddy" } = Astro.props;
+---
+<!doctype html>
+
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title} | StudyBuddy</title>
+  </head>
+  <body class="bg-slate-50 text-slate-800 min-h-screen">
+    <header class="bg-indigo-600 text-white">
+      <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+        <a href="/" class="text-2xl font-bold">🎓 StudyBuddy</a>
+        <span class="text-indigo-200 text-sm">Inteligentní příprava na zkoušky</span>
+      </div>
+    </header>
+    <main class="max-w-4xl mx-auto px-4 py-8">
+      <slot />
+    </main>
+  </body>
+</html>

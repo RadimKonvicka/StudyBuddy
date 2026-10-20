@@ -1,0 +1,22 @@
+{
+  "name": "frontend",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@bruits/satteri-win32-x64-msvc": "^0.10.5",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "5.18.2",
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.1",
+    "tailwindcss": "^4.3.3"
+  }
+}

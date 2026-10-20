@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+.md h2 { font-size: 1.4rem; font-weight: 700; margin: 1.5rem 0 .5rem; }
+.md h3 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 .4rem; }
+.md ul { list-style: disc; padding-left: 1.5rem; margin: .5rem 0; }
+.md ol { list-style: decimal; padding-left: 1.5rem; margin: .5rem 0; }
+.md p { margin: .6rem 0; }
+.md strong { font-weight: 700; color: #4338ca; }
+
+.flip { perspective: 1000px; }
+.flip-inner { transition: transform .5s; transform-style: preserve-3d; position: relative; }
+.flip.flipped .flip-inner { transform: rotateY(180deg); }
+.face { backface-visibility: hidden; position: absolute; inset: 0; }
+.back { transform: rotateY(180deg); }
