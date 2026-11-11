@@ -2,29 +2,30 @@ from agents import ResearchAgent, SummaryAgent, QuizAgent, FlashcardAgent
 
 MACROS = {
     "full": {
-        "label": "Kompletní balíček",
-        "desc": "Shrnutí + test (10 otázek) + kartičky (15). Krátké texty se doplní z webu.",
+        "label": "Kompletní studijní set",
+        "desc": "Stručný přehled + testová část (10 otázek) + oboustranné kartičky (15 ks). Krátké podklady systém automaticky dopočítá z webu.",
         "summary": True, "quiz": 10, "cards": 15, "research_below": 3000,
     },
     "quick": {
-        "label": "Rychlé opakování",
-        "desc": "Shrnutí + 10 kartiček. Nejrychlejší.",
+        "label": "Rychlý přehled látky",
+        "desc": "Souhrnná výpska + 10 kartiček k procvičení. Vhodné pro expresní zopakování.",
         "summary": True, "quiz": 0, "cards": 10, "research_below": 0,
     },
     "exam": {
-        "label": "Zkouška (jen test)",
-        "desc": "20 testových otázek, nic dalšího.",
+        "label": "Simulovaný test",
+        "desc": "Generování sady 20 testových otázek bez doplňujících materiálů.",
         "summary": False, "quiz": 20, "cards": 0, "research_below": 0,
     },
 }
 
 
 def run_macro(key: str, text: str) -> dict:
+    """Spustí zvolené makro a postupné zpracování přes agentické rozhraní."""
     cfg = MACROS[key]
     log = []
     work_text = text
 
-    # 1) Výzkumník: jen když je text krátký
+    # Kroky agentu: hledani doplnovacich podkladu u txt
     if len(text) < cfg["research_below"]:
         agent = ResearchAgent()
         extra = agent.run(text)
@@ -33,6 +34,7 @@ def run_macro(key: str, text: str) -> dict:
 
     result = {"summary": "", "questions": [], "cards": [], "log": log, "text": work_text}
 
+    # generovani jednotlivych casti - konfigurace
     if cfg["summary"]:
         a = SummaryAgent()
         result["summary"] = a.run(work_text)
