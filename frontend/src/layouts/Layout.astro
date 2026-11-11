@@ -1,24 +1,112 @@
 ---
 import "../styles/global.css";
-const { title = "StudyBuddy" } = Astro.props;
+
+interface Props {
+  title: string;
+  auth?: boolean; // false = stranka je pristupna bez prihlaseni
+}
+const { title, auth = true } = Astro.props;
+const path = Astro.url.pathname;
+const links = [
+  { href: "/", label: "Přehled" },
+  { href: "/new", label: "Nový předmět" },
+  { href: "/review", label: "Opakování" },
+];
 ---
 <!doctype html>
-
-<html lang="cs">
+<html lang="cs" data-auth={auth ? "required" : "public"}>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title} | StudyBuddy</title>
+    <script is:inline>
+      // nastavi motiv hned pri nacteni, aby stranka neproblikla
+      // a kdyz neni token, posle uzivatele na login
+      (function () {
+        var theme = null, token = null;
+        try {
+          theme = localStorage.getItem("sb_theme");
+          token = localStorage.getItem("sb_token");
+        } catch (e) {}
+        if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        if (document.documentElement.dataset.auth === "required" && !token) {
+          location.replace("/login?next=" + encodeURIComponent(location.pathname + location.search));
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-800 min-h-screen">
-    <header class="bg-indigo-600 text-white">
-      <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-        <a href="/" class="text-2xl font-bold">🎓 StudyBuddy</a>
-        <span class="text-indigo-200 text-sm">Inteligentní příprava na zkoušky</span>
+  <body class="min-h-screen">
+    <header class="bg-surface border-b border-line">
+      <div class="max-w-5xl mx-auto px-4 h-14 flex items-center gap-6">
+        <a href={auth ? "/" : "/login"} class="font-bold text-lg">
+          Study<span class="text-accent">Buddy</span>
+        </a>
+
+        {auth && (
+          <nav class="hidden sm:flex gap-4 text-sm">
+            {links.map((l) => (
+              <a href={l.href} class:list={[path === l.href ? "text-accent font-medium" : "text-muted hover:text-ink"]}>
+                {l.label}
+              </a>
+            ))}
+          </nav>
+        )}
+
+        <div class="ml-auto flex items-center gap-3 text-sm">
+          <button id="theme-toggle" class="text-muted hover:text-ink cursor-pointer" title="Přepnout režim (T)">
+            <span class="dark:hidden">Tmavý režim</span><span class="hidden dark:inline">Světlý režim</span>
+          </button>
+          {auth && (
+            <>
+              <span id="nav-user" class="hidden md:inline text-muted">|</span>
+              <button id="logout" class="text-muted hover:text-ink cursor-pointer">Odhlásit</button>
+            </>
+          )}
+        </div>
       </div>
+
+      {auth && (
+        <nav class="sm:hidden flex justify-around border-t border-line text-sm">
+          {links.map((l) => (
+            <a href={l.href} class:list={["py-2", path === l.href ? "text-accent font-medium" : "text-muted"]}>{l.label}</a>
+          ))}
+        </nav>
+      )}
     </header>
-    <main class="max-w-4xl mx-auto px-4 py-8">
+
+    <main class="max-w-5xl mx-auto px-4 py-6">
       <slot />
     </main>
+
+    <script>
+      import { getUser, logout } from "../lib/auth.js";
+
+      const root = document.documentElement;
+
+      function toggleTheme() {
+        const next = root.dataset.theme === "dark" ? "light" : "dark";
+        root.dataset.theme = next;
+        try { localStorage.setItem("sb_theme", next); } catch {}
+      }
+
+      document.getElementById("theme-toggle")?.addEventListener("click", toggleTheme);
+      document.getElementById("logout")?.addEventListener("click", logout);
+
+      function showUser(user) {
+        const el = document.getElementById("nav-user");
+        if (el && user) el.textContent = user.display_name;
+      }
+      showUser(getUser());
+      window.addEventListener("sb:user", (e) => showUser(e.detail));
+
+      // klavesa T prepina motiv (ne kdyz uzivatel pise do formulare)
+      document.addEventListener("keydown", (e) => {
+        const tag = e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (e.key === "t" && !e.ctrlKey && !e.metaKey && !e.altKey) toggleTheme();
+      });
+    </script>
   </body>
 </html>

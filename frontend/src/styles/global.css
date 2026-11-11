@@ -1,14 +1,97 @@
 @import "tailwindcss";
 
-.md h2 { font-size: 1.4rem; font-weight: 700; margin: 1.5rem 0 .5rem; }
-.md h3 { font-size: 1.15rem; font-weight: 600; margin: 1rem 0 .4rem; }
-.md ul { list-style: disc; padding-left: 1.5rem; margin: .5rem 0; }
-.md ol { list-style: decimal; padding-left: 1.5rem; margin: .5rem 0; }
-.md p { margin: .6rem 0; }
-.md strong { font-weight: 700; color: #4338ca; }
+/* tmavy rezim se zapina atributem data-theme="dark" na <html> */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+:root {
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --surface-2: #f8f9fa;
+  --ink: #1f2328;
+  --muted: #6b7280;
+  --line: #e1e4e8;
+  --accent: #0f7b6c;
+  --accent-soft: #e3f3f0;
+  --accent-ink: #ffffff;
+  /* barvy pro zvladnuti podtemat */
+  --weak: #d63c3c;
+  --mid: #d98a0b;
+  --strong: #1f9254;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #15171b;
+  --surface: #1e2126;
+  --surface-2: #25292f;
+  --ink: #e6e8eb;
+  --muted: #9aa1ab;
+  --line: #30353c;
+  --accent: #3cc3a5;
+  --accent-soft: #1d3a35;
+  --accent-ink: #0d1f1b;
+  --weak: #f06a6a;
+  --mid: #f0b44c;
+  --strong: #4cc985;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-weak: var(--weak);
+  --color-mid: var(--mid);
+  --color-strong: var(--strong);
+  --font-sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* vlastni tridy pro opakovane prvky */
+@utility card { @apply bg-surface border border-line rounded-lg; }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium cursor-pointer
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+@utility btn-primary { @apply btn bg-accent text-accent-ink hover:opacity-90; }
+@utility btn-ghost { @apply btn border border-line bg-surface hover:bg-surface-2; }
+@utility input {
+  @apply w-full rounded-md border border-line bg-surface px-3 py-2 text-ink
+         focus:outline-none focus:border-accent;
+}
+@utility label { @apply block text-sm font-medium mb-1; }
+@utility kbd { @apply inline-block rounded border border-line bg-surface-2 px-1.5 text-xs font-mono text-muted; }
+@utility chip { @apply inline-block rounded px-2 py-0.5 text-xs font-medium; }
+
+/* markdown z AI (vzdy prochazi pres DOMPurify) */
+.md { line-height: 1.6; }
+.md h1 { font-size: 1.5rem; font-weight: 600; margin: 1.2rem 0 .5rem; }
+.md h2 { font-size: 1.25rem; font-weight: 600; margin: 1.2rem 0 .5rem; }
+.md h3 { font-size: 1.05rem; font-weight: 600; margin: 1rem 0 .4rem; }
+.md p { margin: .5rem 0; }
+.md ul { list-style: disc; padding-left: 1.4rem; margin: .5rem 0; }
+.md ol { list-style: decimal; padding-left: 1.4rem; margin: .5rem 0; }
+.md strong { font-weight: 600; }
+.md code { background: var(--surface-2); padding: 0 .3rem; border-radius: 3px; font-size: .9em; }
+.md pre { background: var(--surface-2); padding: .8rem; border-radius: 6px; overflow-x: auto; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: .8rem; color: var(--muted); }
+.md table { border-collapse: collapse; margin: .6rem 0; }
+.md th, .md td { border: 1px solid var(--line); padding: .3rem .6rem; text-align: left; }
+.md a { color: var(--accent); text-decoration: underline; }
+
+/* otaceni karticky */
 .flip { perspective: 1000px; }
-.flip-inner { transition: transform .5s; transform-style: preserve-3d; position: relative; }
+.flip-inner { transition: transform .4s; transform-style: preserve-3d; position: relative; }
 .flip.flipped .flip-inner { transform: rotateY(180deg); }
 .face { backface-visibility: hidden; position: absolute; inset: 0; }
-.back { transform: rotateY(180deg); }
+.face.back { transform: rotateY(180deg); }
