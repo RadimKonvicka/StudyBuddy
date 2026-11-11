@@ -1,0 +1,74 @@
+---
+// formular pro prihlaseni i registraci, lisi se jen polem pro jmeno
+interface Props { mode: "login" | "register" }
+const { mode } = Astro.props;
+const isReg = mode === "register";
+---
+<div class="max-w-sm mx-auto mt-10">
+  <h1 class="text-2xl font-semibold mb-4">{isReg ? "Registrace" : "Přihlášení"}</h1>
+
+  <form id="auth-form" class="card p-5 space-y-4" novalidate data-mode={mode}>
+    {isReg && (
+      <div>
+        <label class="label" for="display_name">Jméno</label>
+        <input class="input" id="display_name" name="display_name" maxlength="80" required />
+      </div>
+    )}
+    <div>
+      <label class="label" for="email">E-mail</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" required />
+    </div>
+    <div>
+      <label class="label" for="password">Heslo</label>
+      <input class="input" id="password" name="password" type="password" maxlength="128"
+        autocomplete={isReg ? "new-password" : "current-password"} required />
+      {isReg && <p class="text-xs text-muted mt-1">Minimálně 8 znaků</p>}
+    </div>
+    <p id="auth-error" class="text-sm text-weak" role="alert"></p>
+    <button class="btn-primary w-full" id="auth-submit">{isReg ? "Vytvořit účet" : "Přihlásit"}</button>
+  </form>
+
+  <p class="text-sm text-muted mt-4 text-center">
+    {isReg
+      ? <>Máš už účet? <a href="/login" class="text-accent">Přihlásit se</a></>
+      : <>Nemáš účet? <a href="/register" class="text-accent">Registrovat se</a></>}
+  </p>
+</div>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { setSession } from "../lib/auth.js";
+
+  const form = document.getElementById("auth-form");
+  const errorEl = document.getElementById("auth-error");
+  const submitBtn = document.getElementById("auth-submit");
+  const mode = form.dataset.mode;
+
+  // po prihlaseni vratit uzivatele tam, kde byl (jen adresy z nasi stranky)
+  function nextUrl() {
+    const next = new URLSearchParams(location.search).get("next") || "/";
+    if (next.startsWith("/") && !next.startsWith("//")) return next;
+    return "/";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorEl.textContent = "";
+    const data = Object.fromEntries(new FormData(form));
+
+    if (!data.email || !data.password || (mode === "register" && !data.display_name.trim())) {
+      errorEl.textContent = "Vyplň všechna pole.";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    try {
+      const res = await api(`/api/auth/${mode}`, { method: "POST", body: data, auth: false });
+      setSession(res.access_token, res.user);
+      location.href = nextUrl();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      submitBtn.disabled = false;
+    }
+  });
+</script>
