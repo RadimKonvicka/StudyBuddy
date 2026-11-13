@@ -1,15 +1,26 @@
 ---
-// prehled - zatim jen info o uctu, statistiky pridam pozdeji
+// prehled: statistiky uzivatele a seznam jeho temat
 import Layout from "../layouts/Layout.astro";
 ---
 <Layout title="Přehled">
-  <h1 class="text-2xl font-semibold" id="greeting">Přehled</h1>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-semibold" id="greeting">Přehled</h1>
+    <a href="/new" class="btn-primary">+ Nové téma</a>
+  </div>
 
-  <div class="card p-5 mt-4">
-    <h2 class="font-semibold mb-3">Můj účet</h2>
-    <table id="me" class="text-sm">
-      <tr><td class="text-muted">Načítám...</td></tr>
-    </table>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5" id="stats">
+    <div class="card p-4"><div class="text-sm text-muted">Body XP</div><div class="text-2xl font-semibold tabular-nums" id="stat-xp">–</div></div>
+    <div class="card p-4"><div class="text-sm text-muted">Série dní</div><div class="text-2xl font-semibold tabular-nums" id="stat-streak">–</div><div class="text-xs text-muted" id="stat-longest"></div></div>
+    <a href="/review" class="card p-4 hover:border-accent block">
+      <div class="text-sm text-muted">Kartičky k opakování</div>
+      <div class="text-2xl font-semibold tabular-nums" id="stat-due">–</div>
+      <div class="text-xs text-accent">Opakovat →</div>
+    </a>
+  </div>
+
+  <h2 class="text-lg font-semibold mt-8 mb-3">Moje témata</h2>
+  <div id="subjects" class="grid gap-3">
+    <p class="text-muted text-sm">Načítám…</p>
   </div>
 </Layout>
 
@@ -17,16 +28,46 @@ import Layout from "../layouts/Layout.astro";
   import { api } from "../lib/api.js";
   import { updateUser } from "../lib/auth.js";
   import { esc, toast } from "../lib/dom.js";
+  import { masteryBar } from "../lib/learning.js";
+
+  function levelOf(m) {
+    if (m === null) return null;
+    return m < 50 ? "weak" : m < 80 ? "mid" : "strong";
+  }
+
+  function subjectCard(s) {
+    const action = s.entry_done
+      ? `<a href="/subject?id=${s.id}" class="btn-ghost">Studovat</a>`
+      : `<a href="/quiz?id=${s.entry_quiz_id}" class="btn-primary">Udělat vstupní test</a>`;
+    return `
+      <div class="card p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <a href="/subject?id=${s.id}" class="font-semibold hover:text-accent">${esc(s.title)}</a>
+          <div class="text-xs text-muted mb-2">${s.subtopic_count} podtémat${s.level ? " · " + esc(s.level) : ""}</div>
+          ${s.entry_done ? masteryBar(s.mastery, levelOf(s.mastery)) : `<div class="text-xs text-mid">Vstupní test čeká na vyplnění</div>`}
+        </div>
+        ${action}
+      </div>`;
+  }
 
   async function load() {
     try {
-      const me = await api("/api/auth/me");
+      const [me, subjects, review] = await Promise.all([api("/api/auth/me"), api("/api/subjects"), api("/api/review")]);
       updateUser(me);
       document.getElementById("greeting").textContent = `Ahoj, ${me.display_name}`;
-      document.getElementById("me").innerHTML = `
-        <tr><td class="text-muted pr-6 py-1">E-mail</td><td>${esc(me.email)}</td></tr>
-        <tr><td class="text-muted pr-6 py-1">XP</td><td>${me.xp}</td></tr>
-        <tr><td class="text-muted pr-6 py-1">Série dní</td><td>${me.streak}</td></tr>`;
+      document.getElementById("stat-xp").textContent = me.xp;
+      document.getElementById("stat-streak").textContent = me.streak;
+      document.getElementById("stat-longest").textContent = `Nejdelší: ${me.longest_streak}`;
+      document.getElementById("stat-due").textContent = review.due_total;
+
+      const list = document.getElementById("subjects");
+      list.innerHTML = subjects.length
+        ? subjects.map(subjectCard).join("")
+        : `<div class="card p-6 text-center">
+             <p class="font-medium">Zatím nemáš žádné téma.</p>
+             <p class="text-sm text-muted mt-1 mb-4">Napiš, co se chceš naučit. Uděláš krátký vstupní test a podle výsledku ti připravím výklad a kartičky.</p>
+             <a href="/new" class="btn-primary">Přidat první téma</a>
+           </div>`;
     } catch (err) {
       toast(err.message, "error");
     }

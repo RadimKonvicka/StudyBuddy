@@ -1,0 +1,136 @@
+---
+// studijni plan tematu: podtemata serazena od nejslabsiho, vyklad, procvicovani, historie testu
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Téma">
+  <div id="subject" class="max-w-3xl mx-auto">
+    <p class="text-muted text-sm">Načítám…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { esc, toast } from "../lib/dom.js";
+  import { AI_TIMEOUT, aiLoading, idFromUrl, masteryBar } from "../lib/learning.js";
+
+  const root = document.getElementById("subject");
+  const subjectId = idFromUrl();
+  let subject = null;
+
+  // nejslabsi podtemata nahoru – tam je nejvetsi prostor pro zlepseni
+  function sorted(subtopics) {
+    return [...subtopics].sort((a, b) => (a.mastery ?? 101) - (b.mastery ?? 101));
+  }
+
+  function overall() {
+    if (subject.mastery === null) return "";
+    const level = subject.mastery < 50 ? "weak" : subject.mastery < 80 ? "mid" : "strong";
+    return `<div class="card p-4 mt-4"><div class="text-sm text-muted mb-1">Celkové zvládnutí</div>${masteryBar(subject.mastery, level)}</div>`;
+  }
+
+  function render() {
+    document.title = `${subject.title} | StudyBuddy`;
+    const subtopics = subject.entry_done ? sorted(subject.subtopics) : subject.subtopics;
+    const recommendedId = subject.entry_done ? subtopics.find((s) => s.level !== "strong")?.id : null;
+
+    root.innerHTML = `
+      <a href="/" class="text-sm text-muted hover:text-ink">← Přehled</a>
+      <h1 class="text-2xl font-semibold mt-1">${esc(subject.title)}</h1>
+      ${subject.level ? `<p class="text-sm text-muted">${esc(subject.level)}</p>` : ""}
+
+      ${subject.entry_done ? overall() : `
+        <div class="card p-5 mt-4 border-accent">
+          <p class="font-medium">Nejdřív si udělej vstupní test.</p>
+          <p class="text-sm text-muted mt-1 mb-3">Podle výsledku zjistím, co už umíš, a výklad přizpůsobím tomu, co ti nejde.</p>
+          <a href="/quiz?id=${subject.entry_quiz_id}" class="btn-primary">Udělat vstupní test</a>
+        </div>`}
+
+      <h2 class="text-lg font-semibold mt-6 mb-1">Studijní plán</h2>
+      <p class="text-sm text-muted mb-3">${subject.entry_done ? "Seřazeno od toho, co ti jde nejméně." : "Podtémata, která test prověří."}</p>
+      <div class="grid gap-3">
+        ${subtopics.map((s) => `
+          <div class="card p-4 ${s.id === recommendedId ? "border-accent" : ""}">
+            ${s.id === recommendedId ? `<div class="chip bg-accent-soft text-accent mb-2">Doporučuji začít tady</div>` : ""}
+            <div class="font-medium">${esc(s.name)}</div>
+            <p class="text-sm text-muted mt-0.5">${esc(s.description)}</p>
+            <div class="mt-3">${masteryBar(s.mastery, s.level)}</div>
+            <div class="flex flex-wrap items-center gap-2 mt-3">
+              <a href="/lesson?id=${s.id}" class="${s.has_lesson ? "btn-ghost" : "btn-primary"}">${s.has_lesson ? "Otevřít výklad" : "Vytvořit výklad"}</a>
+              <button class="btn-ghost" data-practice="${s.id}">Procvičit test</button>
+              ${s.cards ? `<span class="text-xs text-muted">${s.cards} kartiček</span>` : ""}
+            </div>
+          </div>`).join("")}
+      </div>
+
+      ${subject.quizzes.length ? `
+        <h2 class="text-lg font-semibold mt-6 mb-2">Historie testů</h2>
+        <div class="card divide-y divide-line text-sm">
+          ${subject.quizzes.map((q) => `
+            <a href="/quiz?id=${q.id}" class="flex items-center justify-between gap-3 p-3 hover:bg-surface-2">
+              <span>${q.kind === "entry" ? "Vstupní test" : `Procvičování: ${esc(q.subtopic_name)}`}</span>
+              <span class="tabular-nums ${q.completed ? "" : "text-mid"}">${q.completed ? `${q.score} / ${q.total}` : "Nevyplněno"}</span>
+            </a>`).join("")}
+        </div>` : ""}
+
+      <div class="mt-8 pt-4 border-t border-line flex flex-wrap items-center gap-3">
+        <button id="delete" class="text-sm text-muted hover:text-weak cursor-pointer">Smazat téma</button>
+        <span id="delete-hint" class="text-sm text-weak" hidden>Smaže se i výklad, testy a kartičky. Klikni znovu pro potvrzení.</span>
+      </div>`;
+
+    root.querySelectorAll("[data-practice]").forEach((btn) =>
+      btn.addEventListener("click", () => practice(Number(btn.dataset.practice))),
+    );
+    setupDelete();
+  }
+
+  async function practice(subtopicId) {
+    const name = subject.subtopics.find((s) => s.id === subtopicId)?.name || "";
+    root.innerHTML = aiLoading(`Připravuji procvičovací test: ${name}`);
+    try {
+      const res = await api(`/api/subtopics/${subtopicId}/quiz`, { method: "POST", timeout: AI_TIMEOUT });
+      location.href = `/quiz?id=${res.quiz_id}`;
+    } catch (err) {
+      toast(err.message, "error");
+      render();
+    }
+  }
+
+  // mazani na dve kliknuti (prohlizecove confirm() okno neni hezke)
+  function setupDelete() {
+    const btn = document.getElementById("delete");
+    const hint = document.getElementById("delete-hint");
+    let armed = false;
+    btn.addEventListener("click", async () => {
+      if (!armed) {
+        armed = true;
+        hint.hidden = false;
+        btn.textContent = "Ano, smazat";
+        btn.classList.add("text-weak", "font-medium");
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await api(`/api/subjects/${subjectId}`, { method: "DELETE" });
+        location.href = "/";
+      } catch (err) {
+        toast(err.message, "error");
+        btn.disabled = false;
+      }
+    });
+  }
+
+  async function load() {
+    if (!subjectId) {
+      root.innerHTML = `<p>Téma nebylo nalezeno. <a href="/" class="text-accent">Zpět na přehled</a></p>`;
+      return;
+    }
+    try {
+      subject = await api(`/api/subjects/${subjectId}`);
+      render();
+    } catch (err) {
+      root.innerHTML = `<p class="text-weak">${esc(err.message)}</p><a href="/" class="text-accent text-sm">Zpět na přehled</a>`;
+    }
+  }
+
+  load();
+</script>

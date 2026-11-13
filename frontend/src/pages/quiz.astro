@@ -1,0 +1,172 @@
+---
+// test (vstupni nebo procvicovaci): otazky ABCD, po odevzdani vyhodnoceni a vysvetleni
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Test">
+  <div id="quiz" class="max-w-3xl mx-auto">
+    <p class="text-muted text-sm">Načítám test…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { updateUser } from "../lib/auth.js";
+  import { esc, plural, toast } from "../lib/dom.js";
+  import { idFromUrl, masteryBar } from "../lib/learning.js";
+
+  const root = document.getElementById("quiz");
+  const quizId = idFromUrl();
+  const LETTERS = ["A", "B", "C", "D"];
+  let quiz = null;
+
+  function header() {
+    const title = quiz.kind === "entry" ? "Vstupní test" : `Procvičování: ${esc(quiz.subtopic_name)}`;
+    return `
+      <a href="/subject?id=${quiz.subject_id}" class="text-sm text-muted hover:text-ink">← ${esc(quiz.subject_title)}</a>
+      <h1 class="text-2xl font-semibold mt-1">${title}</h1>`;
+  }
+
+  // --- vyplnovani testu ---
+
+  function renderQuestions() {
+    const intro = quiz.kind === "entry"
+      ? "Odpověz podle toho, co opravdu víš. Když nevíš, tipni si. Podle výsledku ti připravím materiály."
+      : "Otázky jsou nastavené podle toho, jak podtéma zvládáš.";
+    root.innerHTML = `
+      ${header()}
+      <p class="text-muted mt-1">${intro}</p>
+      <form id="quiz-form" class="grid gap-4 mt-5" novalidate>
+        ${quiz.questions.map((q, i) => `
+          <fieldset class="card p-4">
+            <legend class="sr-only">Otázka ${i + 1}</legend>
+            <div class="flex items-start justify-between gap-3">
+              <p class="font-medium"><span class="text-muted">${i + 1}.</span> ${esc(q.text)}</p>
+              ${quiz.kind === "entry" ? `<span class="chip bg-surface-2 text-muted shrink-0 hidden sm:inline-block">${esc(q.subtopic_name)}</span>` : ""}
+            </div>
+            <div class="grid gap-2 mt-3">
+              ${q.options.map((opt, j) => `
+                <label class="flex items-start gap-3 rounded-md border border-line px-3 py-2 cursor-pointer hover:bg-surface-2 has-[:checked]:border-accent has-[:checked]:bg-accent-soft">
+                  <input type="radio" name="q${q.id}" value="${j}" class="mt-1 accent-[var(--accent)]" />
+                  <span><b class="text-muted mr-1">${LETTERS[j]})</b>${esc(opt)}</span>
+                </label>`).join("")}
+            </div>
+          </fieldset>`).join("")}
+        <div class="card p-4 flex flex-wrap items-center justify-between gap-3 sticky bottom-2">
+          <span id="progress" class="text-sm text-muted"></span>
+          <button class="btn-primary" id="submit">Odevzdat test</button>
+        </div>
+        <p id="quiz-error" class="text-sm text-weak" role="alert"></p>
+      </form>`;
+
+    const form = document.getElementById("quiz-form");
+    const updateProgress = () => {
+      const done = form.querySelectorAll("input:checked").length;
+      document.getElementById("progress").textContent = `Zodpovězeno ${done} z ${quiz.questions.length}`;
+    };
+    form.addEventListener("change", updateProgress);
+    updateProgress();
+    form.addEventListener("submit", submit);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const answers = {};
+    for (const q of quiz.questions) {
+      const checked = form.querySelector(`input[name="q${q.id}"]:checked`);
+      if (checked) answers[q.id] = Number(checked.value);
+    }
+    const missing = quiz.questions.length - Object.keys(answers).length;
+    const errorEl = document.getElementById("quiz-error");
+    if (missing > 0) {
+      errorEl.textContent = `Odpověz ještě na ${missing} ${plural(missing, "otázku", "otázky", "otázek")}.`;
+      return;
+    }
+    const btn = document.getElementById("submit");
+    btn.disabled = true;
+    btn.textContent = "Vyhodnocuji…";
+    try {
+      const result = await api(`/api/quizzes/${quizId}/submit`, { method: "POST", body: { answers } });
+      if (result.user) updateUser(result.user);
+      quiz.completed = true;
+      quiz.result = result;
+      renderResult();
+      window.scrollTo({ top: 0 });
+    } catch (err) {
+      errorEl.textContent = err.message;
+      btn.disabled = false;
+      btn.textContent = "Odevzdat test";
+    }
+  }
+
+  // --- vyhodnoceni ---
+
+  function renderResult() {
+    const r = quiz.result;
+    const pct = r.total ? Math.round((r.score / r.total) * 100) : 0;
+    const next = quiz.kind === "entry"
+      ? `<a href="/subject?id=${quiz.subject_id}" class="btn-primary">Pokračovat na studijní plán →</a>`
+      : `<a href="/lesson?id=${quiz.subtopic_id}" class="btn-primary">Zpět na podtéma</a>
+         <a href="/subject?id=${quiz.subject_id}" class="btn-ghost">Studijní plán</a>`;
+
+    root.innerHTML = `
+      ${header()}
+      <div class="card p-5 mt-4 flex flex-wrap items-center gap-6">
+        <div>
+          <div class="text-sm text-muted">Výsledek</div>
+          <div class="text-3xl font-semibold tabular-nums">${r.score} / ${r.total} <span class="text-lg text-muted">(${pct} %)</span></div>
+        </div>
+        ${r.xp_gained ? `<div class="chip bg-accent-soft text-accent text-sm">+${r.xp_gained} XP</div>` : ""}
+        <div class="flex flex-wrap gap-2 sm:ml-auto">${next}</div>
+      </div>
+
+      <h2 class="text-lg font-semibold mt-6 mb-2">Jak zvládáš podtémata</h2>
+      <div class="card divide-y divide-line">
+        ${r.subtopics.map((s) => `
+          <div class="p-4 grid sm:grid-cols-[1fr_16rem] gap-2 items-center">
+            <div>
+              <div class="font-medium">${esc(s.name)}</div>
+              <div class="text-xs text-muted">V tomto testu ${s.correct} z ${s.total} správně${
+                s.before !== null && s.before !== undefined && s.before !== s.mastery ? ` · dříve ${s.before} %` : ""}</div>
+            </div>
+            ${masteryBar(s.mastery, s.level)}
+          </div>`).join("")}
+      </div>
+
+      <h2 class="text-lg font-semibold mt-6 mb-2">Otázky a vysvětlení</h2>
+      <div class="grid gap-3">
+        ${r.questions.map((q, i) => `
+          <div class="card p-4 border-l-4 ${q.is_correct ? "border-l-strong" : "border-l-weak"}">
+            <p class="font-medium"><span class="text-muted">${i + 1}.</span> ${esc(q.text)}</p>
+            <ul class="grid gap-1 mt-2 text-sm">
+              ${q.options.map((opt, j) => {
+                const isRight = j === q.correct;
+                const isChosen = j === q.chosen;
+                const cls = isRight ? "text-strong font-medium" : isChosen ? "text-weak line-through" : "text-muted";
+                const tag = isRight ? " ✓" : isChosen ? " (tvoje odpověď)" : "";
+                return `<li class="${cls}">${LETTERS[j]}) ${esc(opt)}${tag}</li>`;
+              }).join("")}
+            </ul>
+            ${q.explanation ? `<p class="text-sm mt-2 bg-surface-2 rounded-md px-3 py-2">${esc(q.explanation)}</p>` : ""}
+          </div>`).join("")}
+      </div>
+      <div class="flex flex-wrap gap-2 mt-6">${next}</div>`;
+  }
+
+  async function load() {
+    if (!quizId) {
+      root.innerHTML = `<p>Test nebyl nalezen. <a href="/" class="text-accent">Zpět na přehled</a></p>`;
+      return;
+    }
+    try {
+      quiz = await api(`/api/quizzes/${quizId}`);
+      document.title = `${quiz.kind === "entry" ? "Vstupní test" : "Procvičování"} | StudyBuddy`;
+      quiz.completed ? renderResult() : renderQuestions();
+    } catch (err) {
+      root.innerHTML = `<p class="text-weak">${esc(err.message)}</p><a href="/" class="text-accent text-sm">Zpět na přehled</a>`;
+      toast(err.message, "error");
+    }
+  }
+
+  load();
+</script>

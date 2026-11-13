@@ -1,0 +1,66 @@
+---
+// nove tema: uzivatel napise co se chce naucit, AI pripravi podtemata a vstupni test
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Nové téma">
+  <div class="max-w-xl mx-auto" id="loading" hidden></div>
+  <div class="max-w-xl mx-auto" id="page">
+    <h1 class="text-2xl font-semibold">Co se chceš naučit?</h1>
+    <p class="text-muted mt-1">Nejdřív zjistíme, co už umíš, a pak ti připravím materiály přesně na míru.</p>
+
+    <ol class="grid sm:grid-cols-3 gap-2 mt-5 text-sm">
+      <li class="card p-3"><b class="text-accent">1.</b> Krátký vstupní test</li>
+      <li class="card p-3"><b class="text-accent">2.</b> Výklad podle toho, co ti nejde</li>
+      <li class="card p-3"><b class="text-accent">3.</b> Procvičování a kartičky</li>
+    </ol>
+
+    <form id="new-form" class="card p-5 space-y-4 mt-5" novalidate>
+      <div>
+        <label class="label" for="title">Téma</label>
+        <input class="input" id="title" name="title" maxlength="120" required
+          placeholder="např. Fotosyntéza, Kvadratické rovnice, První světová válka" />
+      </div>
+      <div>
+        <label class="label" for="level">Poznámka <span class="text-muted font-normal">(nepovinné)</span></label>
+        <textarea class="input" id="level" name="level" rows="3" maxlength="300"
+          placeholder="Ročník, typ školy, co už umíš nebo na co se chceš zaměřit…"></textarea>
+        <p class="text-xs text-muted mt-1">Podle toho AI nastaví obtížnost.</p>
+      </div>
+      <p id="new-error" class="text-sm text-weak" role="alert"></p>
+      <button class="btn-primary w-full" id="new-submit">Vytvořit vstupní test</button>
+    </form>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { AI_TIMEOUT, aiLoading } from "../lib/learning.js";
+
+  const form = document.getElementById("new-form");
+  const errorEl = document.getElementById("new-error");
+  const page = document.getElementById("page");
+  const loading = document.getElementById("loading");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorEl.textContent = "";
+    const data = Object.fromEntries(new FormData(form));
+    if (data.title.trim().length < 2) {
+      errorEl.textContent = "Napiš téma, které se chceš naučit.";
+      return;
+    }
+
+    // behem generovani schovame formular a ukazeme cekani
+    loading.innerHTML = aiLoading(`Připravuji podtémata a vstupní test: ${data.title.trim()}`);
+    page.hidden = true;
+    loading.hidden = false;
+    try {
+      const subject = await api("/api/subjects", { method: "POST", body: data, timeout: AI_TIMEOUT });
+      location.href = `/quiz?id=${subject.entry_quiz_id}`;
+    } catch (err) {
+      loading.hidden = true;
+      page.hidden = false;
+      errorEl.textContent = err.message;
+    }
+  });
+</script>

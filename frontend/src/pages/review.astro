@@ -1,0 +1,116 @@
+---
+// opakovani karticek (Leitneruv system): ukaz otazku → odpoved → vedel / nevedel
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Opakování">
+  <div id="review" class="max-w-xl mx-auto">
+    <p class="text-muted text-sm">Načítám kartičky…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { updateUser } from "../lib/auth.js";
+  import { esc, plural, toast } from "../lib/dom.js";
+
+  const root = document.getElementById("review");
+  let queue = []; // karticky v tomto sezeni; nezname se zaradi znovu na konec
+  let dueTotal = 0;
+  let revealed = false;
+  let busy = false;
+  const stats = { done: 0, known: 0, xp: 0 };
+
+  function renderCard() {
+    const card = queue[0];
+    if (!card) return renderDone();
+    revealed = false;
+    root.innerHTML = `
+      <div class="flex items-center justify-between text-sm text-muted">
+        <span>Zbývá ${queue.length} ${plural(queue.length, "kartička", "kartičky", "kartiček")}</span>
+        <span>Krabička ${card.box} / 5</span>
+      </div>
+      <div class="card p-6 mt-3 min-h-64 flex flex-col">
+        <div class="text-xs text-muted">${esc(card.subject_title)} · ${esc(card.subtopic_name)}</div>
+        <div class="flex-1 flex items-center justify-center text-center text-lg font-medium py-6">${esc(card.front)}</div>
+        <div id="answer" class="border-t border-line pt-4 text-center" hidden>${esc(card.back)}</div>
+      </div>
+      <div id="actions" class="mt-4">
+        <button id="reveal" class="btn-primary w-full">Ukázat odpověď <span class="kbd ml-1">mezerník</span></button>
+      </div>`;
+    document.getElementById("reveal").addEventListener("click", reveal);
+  }
+
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
+    document.getElementById("answer").hidden = false;
+    document.getElementById("actions").innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <button id="unknown" class="btn-ghost text-weak">Nevěděl jsem <span class="kbd">1</span></button>
+        <button id="known" class="btn-primary">Věděl jsem <span class="kbd">2</span></button>
+      </div>`;
+    document.getElementById("unknown").addEventListener("click", () => answer(false));
+    document.getElementById("known").addEventListener("click", () => answer(true));
+  }
+
+  async function answer(known) {
+    if (busy) return;
+    busy = true;
+    const card = queue[0];
+    try {
+      const res = await api(`/api/flashcards/${card.id}/review`, { method: "POST", body: { known } });
+      updateUser(res.user);
+      stats.done += 1;
+      stats.xp += res.xp_gained;
+      queue.shift();
+      if (known) {
+        stats.known += 1;
+        dueTotal -= 1;
+      } else {
+        queue.push({ ...card, box: res.box }); // neznamou kartu zopakujeme jeste v tomto sezeni
+      }
+      renderCard();
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      busy = false;
+    }
+  }
+
+  function renderDone() {
+    const more = dueTotal > 0;
+    root.innerHTML = `
+      <div class="card p-6 text-center">
+        <h1 class="text-xl font-semibold">${stats.done ? "Hotovo, dobrá práce!" : "Dnes nemáš nic k opakování."}</h1>
+        ${stats.done
+          ? `<p class="text-muted mt-2">Zopakováno ${stats.done}× · napoprvé ${stats.known} · +${stats.xp} XP</p>`
+          : `<p class="text-muted mt-2">Kartičky vznikají k výkladům podtémat. Další opakování se ti objeví, až přijde jejich čas.</p>`}
+        <div class="flex flex-wrap justify-center gap-2 mt-4">
+          ${more ? `<button id="more" class="btn-primary">Načíst další kartičky</button>` : ""}
+          <a href="/" class="btn-ghost">Zpět na přehled</a>
+        </div>
+      </div>`;
+    document.getElementById("more")?.addEventListener("click", load);
+  }
+
+  // klavesy: mezernik = ukazat odpoved, 1 = nevedel, 2 = vedel
+  document.addEventListener("keydown", (e) => {
+    if (!queue.length || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === " " && !revealed) { e.preventDefault(); reveal(); }
+    else if (revealed && e.key === "1") answer(false);
+    else if (revealed && e.key === "2") answer(true);
+  });
+
+  async function load() {
+    try {
+      const res = await api("/api/review");
+      queue = res.cards;
+      dueTotal = res.due_total;
+      renderCard();
+    } catch (err) {
+      root.innerHTML = `<p class="text-weak">${esc(err.message)}</p>`;
+    }
+  }
+
+  load();
+</script>
