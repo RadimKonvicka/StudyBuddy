@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401  – registrace tabulek před create_all
 from .config import get_settings
 from .database import Base, engine
-from .routers import auth
+from .routers import auth, quizzes, review, subjects
 
 settings = get_settings()
 
@@ -29,7 +29,14 @@ app.add_middleware(
 )
 
 # Překlad nejčastějších validačních chyb do češtiny (Pydantic je hlásí anglicky).
-_FIELD_NAMES = {"email": "E-mail", "password": "Heslo", "display_name": "Jméno", "title": "Název"}
+_FIELD_NAMES = {
+    "email": "E-mail",
+    "password": "Heslo",
+    "display_name": "Jméno",
+    "title": "Téma",
+    "level": "Poznámka",
+    "answers": "Odpovědi",
+}
 
 
 def _czech_error(err: dict) -> str:
@@ -57,6 +64,9 @@ async def validation_handler(_: Request, exc: RequestValidationError):
 
 
 app.include_router(auth.router)
+app.include_router(subjects.router)
+app.include_router(quizzes.router)
+app.include_router(review.router)
 
 
 @app.get("/api/health", tags=["Systém"])
