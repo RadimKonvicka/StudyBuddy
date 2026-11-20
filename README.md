@@ -44,7 +44,7 @@ Projekt je realizován v logických návazných krocích, které vedou od zpraco
 1. **Vstup a extrakce dat:**
    Uživatel nahraje soubor (PDF/DOCX/TXT). Backend aplikace soubor přijme a pomocí knihoven `pypdf` a `python-docx` z něj extrahuje čistý text bez balastu.
 2. **Sémantické zpracování a AI Prompting:**
-   Extrahovaný text je odeslán přes API do jazykového modelu Google Gemini 2.5 Flash. Pomocí přesně definovaných výzev (*promptů*) AI vygeneruje odpověď ve formátu JSON (otázky, možnosti, správné odpovědi, klíčové body).
+   Extrahovaný text je odeslán přes API do jazykového modelu Google Gemini 3.5 Flash-Lite (při výpadku se automaticky použije záložní model Gemini 3.6 Flash). Pomocí přesně definovaných výzev (*promptů*) AI vygeneruje odpověď ve formátu JSON (otázky, možnosti, správné odpovědi, klíčové body).
 3. **Uložení a správa dat:**
    Vygenerovaná data a metadata o dokumentech se uloží do relační databáze (PostgreSQL v produkci, SQLite při lokálním vývoji). Každý záznam patří konkrétnímu přihlášenému uživateli.
 4. **Předání dat frontendu:**
@@ -61,7 +61,7 @@ Pro vývoj, správu kódu a spuštění projektu jsou použity následující n�
 * **Vývojové prostředí (IDE):** Visual Studio Code (s rozšířeními pro Python, Astro a Git)
 * **Verzovací systém:** Git & GitHub (správa zdrojového kódu a verzování)
 * **Runtime & Balíčkovací správci:**
-  * **Python 3.10+** & `pip` (backendová logika)
+  * **Python 3.11+** & `pip` (backendová logika)
   * **Node.js 22+** & `npm` (buildování frontendu a správce balíčků)
 * **Databáze:** PostgreSQL (Render / Supabase), SQLite pro lokální vývoj
 * **Testování:** `pytest` (automatické testy backendu)
@@ -77,7 +77,7 @@ Pro vývoj, správu kódu a spuštění projektu jsou použity následující n�
 | **Frontend** | **Astro + Tailwind CSS 4** | **Astro** ve statickém režimu zajišťuje bleskovou rychlost a minimální JS bundle. **marked + DOMPurify** bezpečně převádí Markdown od AI na HTML. **Tailwind CSS** garantuje čisté UI se světlým i tmavým režimem. |
 | **Backend** | **Python (FastAPI + SQLAlchemy 2.0)** | **Python** poskytuje nativní ekosystém pro práci s AI SDK, manipulaci s dokumenty (`pypdf`, `python-docx`) a tvorbu REST API endpointů. |
 | **Zabezpečení** | **Argon2 + JWT** | Hesla se ukládají pouze jako hash Argon2id, přihlášení drží podepsaný JWT token posílaný v hlavičce `Authorization`. |
-| **AI API** | **Google Gemini 2.5 Flash** (`google-genai`) | Bezplatný vývojářský tier, obrovské kontextové okno (zpracování dlouhých PDF) a výborná čeština. |
+| **AI API** | **Google Gemini 3.5 Flash-Lite** + záložní **Gemini 3.6 Flash** (`google-genai`) | Bezplatný vývojářský tier, obrovské kontextové okno (zpracování dlouhých PDF) a dobrá čeština. Modely jdou přepnout v `.env` (`GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`), volání se při přetížení opakuje. |
 | **Databáze** | **PostgreSQL (Render)** | Relační databáze pro strukturované ukládání uživatelů, předmětů, extraktů z dokumentů a kvízů. |
 | **Deployment** | **Vercel** (Frontend) + **Render.com** (Backend) | Bezplatné hostingové platformy s automatickým CI/CD přímo z GitHub repozitáře. |
 
