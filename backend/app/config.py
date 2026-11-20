@@ -19,7 +19,11 @@ class Settings(BaseSettings):
     access_token_minutes: int = 60 * 24 * 7
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
+    gemini_fallback_model: str = "gemini-3.6-flash"  # prázdné = bez záložního modelu
+    ai_request_timeout: int = 50  # max. sekund na jeden pokus
+    ai_total_timeout: int = 110  # max. sekund na všechny pokusy dohromady (frontend čeká 120 s)
+    ai_retries: int = 3  # kolikrát zkusit jeden model při přetížení (429, 5xx)
 
     cors_origins: str = "http://localhost:4321,http://127.0.0.1:4321"
 
