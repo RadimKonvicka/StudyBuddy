@@ -164,21 +164,16 @@ def main() -> int:
     results["B text"] = run("B) Jednoduchý textový dotaz", simple_text)
 
     def json_like_app():
-        # stejná konfigurace, jakou teď používá app/ai.py
-        config = types.GenerateContentConfig(
-            system_instruction="Odpovídáš pouze ve formátu JSON podle zadaného schématu.",
-            response_mime_type="application/json",
-            response_schema=Pokus,
-            temperature=0.7,
-        )
-        if "flash" in model:
-            config.thinking_config = types.ThinkingConfig(thinking_budget=0)
+        # konfiguraci vezmeme přímo z app/ai.py, takže test odpovídá tomu, co posílá aplikace
+        from app.ai import _config
+        config = _config(model, Pokus, 60)
+        print(f"  thinking_config: {config.thinking_config}")
         r = client.models.generate_content(model=model, contents="Popiš město Opava.", config=config)
         print_response(r)
         print(f"  validace Pydantic: {Pokus.model_validate_json(r.text or '')}")
 
     results["C JSON jako aplikace"] = run(
-        "C) JSON výstup PŘESNĚ jako aplikace (response_schema + temperature + thinking_budget=0)", json_like_app
+        "C) JSON výstup PŘESNĚ jako aplikace (nastavení z app/ai.py)", json_like_app
     )
 
     def json_plain():
