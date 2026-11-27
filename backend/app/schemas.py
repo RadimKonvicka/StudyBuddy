@@ -1,5 +1,6 @@
 """Pydantic schémata – tvar dat, která API přijímá a vrací (a jejich validace)."""
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -45,6 +46,7 @@ class TokenOut(BaseModel):
 class SubjectIn(BaseModel):
     title: str = Field(min_length=2, max_length=120)
     level: str = Field(default="", max_length=300)
+    skip_entry: bool = False  # student začíná od nuly – bez vstupního testu, rovnou výklad
 
     @field_validator("title", "level")
     @classmethod
@@ -87,12 +89,22 @@ class SubjectListItem(BaseModel):
     mastery: int | None  # průměr přes otestovaná podtémata
     entry_quiz_id: int | None
     entry_done: bool
+    entry_skipped: bool = False  # téma bez vstupního testu (student začínal od nuly)
     subtopic_count: int
+    from_materials: bool = False  # téma vzniklo z nahraných podkladů
+
+
+class MaterialOut(BaseModel):
+    id: int
+    filename: str
+    chars: int  # kolik znaků textu se ze souboru přečetlo
 
 
 class SubjectOut(SubjectListItem):
     subtopics: list[SubtopicOut]
     quizzes: list[QuizBrief]
+    materials: list[MaterialOut] = []
+    materials_truncated: bool = False  # podklady byly delší, než AI zvládne – část se nepoužila
 
 
 class QuestionOut(BaseModel):
@@ -155,6 +167,7 @@ class LessonOut(BaseModel):
     subject_id: int
     subject_title: str
     subtopic: SubtopicOut
+    from_materials: bool = False
     content: str | None  # None = výklad ještě nebyl vytvořen
     flashcards: list[FlashcardOut]
 
@@ -182,3 +195,64 @@ class ReviewResult(BaseModel):
 
 class QuizCreated(BaseModel):
     quiz_id: int
+
+
+# --- Třídy ----------------------------------------------------------------------------------
+
+class GroupIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("nesmí být prázdný.")
+        return v
+
+
+class JoinIn(BaseModel):
+    code: str = Field(min_length=1, max_length=20)
+
+
+class RoleIn(BaseModel):
+    role: Literal["teacher", "student"]
+
+
+class MemberBrief(BaseModel):
+    user_id: int
+    display_name: str
+
+
+class GroupListItem(BaseModel):
+    id: int
+    name: str
+    role: str  # moje role v této třídě: "teacher" | "student"
+    teachers: list[MemberBrief]
+    student_count: int
+    join_code: str | None  # kód vidí jen učitelé
+
+
+class StudentRow(BaseModel):
+    """Řádek v učitelském přehledu třídy."""
+
+    user_id: int
+    display_name: str
+    email: str
+    joined_at: datetime
+    xp: int
+    streak: int
+    last_active_date: date | None
+    subject_count: int
+    quizzes_done: int
+    mastery: int | None  # průměr přes všechna otestovaná podtémata žáka
+
+
+class GroupOut(GroupListItem):
+    students: list[StudentRow]  # jen pro učitele, žák dostane prázdný seznam
+
+
+class StudentDetail(StudentRow):
+    group_id: int
+    group_name: str
+    subjects: list[SubjectOut]

@@ -30,15 +30,33 @@ import Layout from "../layouts/Layout.astro";
 
   function render() {
     document.title = `${subject.title} | StudyBuddy`;
+    // bez vstupniho testu (zacatecnik) nechame poradi od zakladu a doporucime prvni nezvladnute podtema
     const subtopics = subject.entry_done ? sorted(subject.subtopics) : subject.subtopics;
-    const recommendedId = subject.entry_done ? subtopics.find((s) => s.level !== "strong")?.id : null;
+    const recommendedId = subject.entry_done || subject.entry_skipped
+      ? subtopics.find((s) => s.level !== "strong")?.id
+      : null;
+    const planNote = subject.entry_done
+      ? "Seřazeno od toho, co ti jde nejméně."
+      : subject.entry_skipped
+        ? "Seřazeno od základů. Ke každému podtématu si přečti výklad a pak se procvič testem."
+        : "Podtémata, která test prověří.";
 
     root.innerHTML = `
       <a href="/" class="text-sm text-muted hover:text-ink">← Přehled</a>
       <h1 class="text-2xl font-semibold mt-1">${esc(subject.title)}</h1>
       ${subject.level ? `<p class="text-sm text-muted">${esc(subject.level)}</p>` : ""}
+      ${subject.materials.length ? `
+        <div class="card p-3 mt-3 text-sm">
+          <div class="font-medium">Podle tvých podkladů</div>
+          <div class="text-muted">${subject.materials.map((m) => esc(m.filename)).join(", ")}</div>
+          ${subject.materials_truncated ? `<div class="text-mid mt-1">Podklady byly moc dlouhé, AI pracuje jen s jejich větší částí.</div>` : ""}
+        </div>` : ""}
 
-      ${subject.entry_done ? overall() : `
+      ${subject.entry_done ? overall() : subject.entry_skipped ? (overall() || `
+        <div class="card p-5 mt-4 border-accent">
+          <p class="font-medium">Začínáš od nuly.</p>
+          <p class="text-sm text-muted mt-1">Nejdřív si postupně projdi výklad podtémat (začni od prvního) a teprve pak se procvič testy. Podle jejich výsledků uvidíš, co už umíš.</p>
+        </div>`) : `
         <div class="card p-5 mt-4 border-accent">
           <p class="font-medium">Nejdřív si udělej vstupní test.</p>
           <p class="text-sm text-muted mt-1 mb-3">Podle výsledku zjistím, co už umíš, a výklad přizpůsobím tomu, co ti nejde.</p>
@@ -46,7 +64,7 @@ import Layout from "../layouts/Layout.astro";
         </div>`}
 
       <h2 class="text-lg font-semibold mt-6 mb-1">Studijní plán</h2>
-      <p class="text-sm text-muted mb-3">${subject.entry_done ? "Seřazeno od toho, co ti jde nejméně." : "Podtémata, která test prověří."}</p>
+      <p class="text-sm text-muted mb-3">${planNote}</p>
       <div class="grid gap-3">
         ${subtopics.map((s) => `
           <div class="card p-4 ${s.id === recommendedId ? "border-accent" : ""}">

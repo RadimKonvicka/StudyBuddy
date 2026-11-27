@@ -169,3 +169,17 @@ def test_novy_model_dostane_thinking_level_stary_thinking_budget():
     assert new.thinking_config.thinking_level == types.ThinkingLevel.MINIMAL
     assert new.thinking_config.thinking_budget is None
     assert old.thinking_config.thinking_budget == 0
+
+
+def test_plan_bez_vstupniho_testu(fake_gemini):
+    # AI otázky stejně poslala – zahodíme je; k platnému plánu stačí podtémata
+    plan_json = (
+        '{"subtopics": [{"name": "Základy", "description": "a"}, {"name": "Pokročilé", "description": "b"}],'
+        + VALID_QUIZ[1:]
+    )
+    fake_gemini(ok_response(plan_json))
+    plan = ai.generate_plan("Fotosyntéza", "", entry_quiz=False)
+    assert [s.name for s in plan.subtopics] == ["Základy", "Pokročilé"] and plan.questions == []
+
+    fake_gemini(ok_response('{"subtopics": [{"name": "Základy", "description": "a"}, {"name": "B", "description": "b"}]}'))
+    assert len(ai.generate_plan("Fotosyntéza", "", entry_quiz=False).subtopics) == 2

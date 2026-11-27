@@ -1,0 +1,39 @@
+# Nasazení na Render.com (Blueprint) – vytvoří backend i frontend najednou.
+# Databáze PostgreSQL běží zdarma na Neon.tech (Render má databázi zdarma jen na 30 dní).
+# Postup krok za krokem je v README.md v sekci „Nasazení online“.
+services:
+  # Backend (FastAPI). Zdarma se po 15 minutách nečinnosti uspí, probuzení trvá asi minutu.
+  - type: web
+    name: studybuddy-maturita-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # --proxy-headers: za proxy Renderu bereme skutečnou IP uživatele (kvůli limitu pokusů o přihlášení)
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true # Render vygeneruje náhodný tajný klíč
+      - key: DATABASE_URL
+        sync: false # při vytváření vložíš adresu databáze z Neonu
+      - key: GEMINI_API_KEY
+        sync: false # při vytváření vložíš svůj klíč Gemini
+      - key: CORS_ORIGINS
+        value: https://studybuddy-maturita.onrender.com
+
+  # Frontend (statický Astro web) – neusíná, načte se hned.
+  - type: web
+    name: studybuddy-maturita
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: PUBLIC_API_URL
+        value: https://studybuddy-maturita-api.onrender.com

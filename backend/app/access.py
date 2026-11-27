@@ -2,11 +2,14 @@
 
 Každá funkce vrátí záznam jen tehdy, když patří přihlášenému uživateli. Jinak vrátí 404 –
 záměrně ne 403, aby cizí uživatel ani nepoznal, že záznam s tímto ID existuje.
+
+U tříd: kdo není členem, dostane 404; člen bez potřebných práv (žák u učitelské akce) 403.
 """
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Flashcard, Quiz, Subject, Subtopic, User
+from .models import Flashcard, Group, GroupMember, Quiz, Subject, Subtopic, User
 from .progress import mastery_level
 from .schemas import SubtopicOut
 
@@ -53,3 +56,27 @@ def subtopic_out(subtopic: Subtopic) -> SubtopicOut:
         has_lesson=subtopic.lesson is not None,
         cards=len(subtopic.flashcards),
     )
+
+
+# --- Třídy ----------------------------------------------------------------------------------
+
+def get_membership(db: Session, group_id: int, user: User, teacher: bool = False) -> GroupMember:
+    """Členství přihlášeného uživatele ve třídě. `teacher=True` = akce jen pro učitele (jinak 403)."""
+    member = db.scalar(
+        select(GroupMember).where(GroupMember.group_id == group_id, GroupMember.user_id == user.id)
+    )
+    if member is None:
+        raise _not_found("Třída")
+    if teacher and member.role != "teacher":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Tohle může jen učitel třídy.")
+    return member
+
+
+def get_member(db: Session, group: Group, user_id: int, role: str | None = None) -> GroupMember:
+    """Jiný člen téže třídy (např. žák, jehož výsledky si učitel prohlíží)."""
+    member = db.scalar(
+        select(GroupMember).where(GroupMember.group_id == group.id, GroupMember.user_id == user_id)
+    )
+    if member is None or (role and member.role != role):
+        raise _not_found("Žák" if role == "student" else "Člen třídy")
+    return member

@@ -26,22 +26,25 @@ def _q(subtopic: int, n: int) -> ai.AIQuestion:
 def fake_ai(monkeypatch):
     calls = {}
 
-    def plan(title, level):
+    def plan(title, level, material="", entry_quiz=True):
         calls["plan"] = (title, level)
+        calls["plan_material"] = material
+        calls["plan_entry_quiz"] = entry_quiz
+        questions = [_q(i, n) for i in range(3) for n in range(2)] if entry_quiz else []
         return ai.AIPlan(
             subtopics=[ai.AISubtopic(name=f"Podtéma {i}", description="popis") for i in range(3)],
-            questions=ai._clean_questions([_q(i, n) for i in range(3) for n in range(2)], 3),
+            questions=ai._clean_questions(questions, 3),
         )
 
-    def lesson(title, level_note, subtopic, description, level, mistakes):
-        calls["lesson"] = {"level": level, "mistakes": mistakes}
+    def lesson(title, level_note, subtopic, description, level, mistakes, material=""):
+        calls["lesson"] = {"level": level, "mistakes": mistakes, "material": material}
         return ai.AILesson(
             content="## Výklad\n" + "Text výkladu. " * 30,
             flashcards=[ai.AIFlashcard(front=f"Pojem {i}", back=f"Vysvětlení {i}") for i in range(3)],
         )
 
-    def quiz(title, level_note, subtopic, description, level, previous):
-        calls["quiz"] = {"level": level, "previous": previous}
+    def quiz(title, level_note, subtopic, description, level, previous, material=""):
+        calls["quiz"] = {"level": level, "previous": previous, "material": material}
         return ai._clean_questions([_q(0, n) for n in range(5)], 1)
 
     monkeypatch.setattr(ai, "generate_plan", plan)
@@ -177,6 +180,40 @@ def test_practice_quiz_updates_mastery(client, auth_headers, fake_ai):
         f"/api/quizzes/{quiz_id}/submit", json={"answers": _answers(quiz, {"Podtéma 0"})}, headers=auth_headers
     ).json()
     assert result["score"] == 5 and result["subtopics"][0]["mastery"] == 100
+
+
+def test_skip_entry_test_starts_from_scratch(client, auth_headers, fake_ai):
+    r = client.post(
+        "/api/subjects", json={"title": "Fotosyntéza", "level": "", "skip_entry": True}, headers=auth_headers
+    )
+    assert r.status_code == 201, r.text
+    subject = r.json()
+    assert fake_ai["plan_entry_quiz"] is False
+    assert subject["entry_skipped"] and subject["entry_quiz_id"] is None and not subject["entry_done"]
+    assert subject["quizzes"] == [] and len(subject["subtopics"]) == 3
+
+    # netestované podtéma u začátečníka = výklad i procvičování od úplných základů
+    subtopic_id = subject["subtopics"][0]["id"]
+    client.post(f"/api/subtopics/{subtopic_id}/lesson", headers=auth_headers)
+    assert fake_ai["lesson"]["level"] == "weak"
+    r = client.post(f"/api/subtopics/{subtopic_id}/quiz", headers=auth_headers)
+    assert fake_ai["quiz"]["level"] == "weak"
+
+    # po procvičení se zvládnutí počítá normálně podle výsledku
+    quiz = client.get(f"/api/quizzes/{r.json()['quiz_id']}", headers=auth_headers).json()
+    result = client.post(
+        f"/api/quizzes/{quiz['id']}/submit", json={"answers": _answers(quiz, {"Podtéma 0"})}, headers=auth_headers
+    ).json()
+    assert result["subtopics"][0]["mastery"] == 100
+    client.post(f"/api/subtopics/{subtopic_id}/lesson", headers=auth_headers)
+    assert fake_ai["lesson"]["level"] == "strong"
+
+
+def test_subject_with_entry_test_is_not_skipped(client, auth_headers, fake_ai):
+    subject = _create(client, auth_headers)
+    assert fake_ai["plan_entry_quiz"] is True and not subject["entry_skipped"]
+    client.post(f"/api/subtopics/{subject['subtopics'][0]['id']}/lesson", headers=auth_headers)
+    assert fake_ai["lesson"]["level"] is None  # test ještě neudělal – úroveň neznáme
 
 
 def test_review_flashcards(client, auth_headers, fake_ai):

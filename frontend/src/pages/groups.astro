@@ -1,0 +1,105 @@
+---
+// tridy: seznam mych trid, zalozeni nove tridy (jsem v ni ucitel) a pripojeni kodem (jsem zak)
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Třídy">
+  <h1 class="text-2xl font-semibold">Třídy</h1>
+  <p class="text-muted mt-1">Ve třídě vidí učitel témata a výsledky svých žáků.</p>
+
+  <div class="grid sm:grid-cols-2 gap-3 mt-5">
+    <form id="join-form" class="card p-5 space-y-3" novalidate>
+      <h2 class="font-semibold">Připojit se do třídy</h2>
+      <div>
+        <label class="label" for="code">Kód od učitele</label>
+        <input class="input uppercase tracking-widest font-mono" id="code" maxlength="20" autocomplete="off" placeholder="např. K7P2QX" />
+      </div>
+      <p class="text-xs text-muted">Učitelé třídy uvidí tvoje témata, zvládnutí podtémat a výsledky testů.</p>
+      <p id="join-error" class="text-sm text-weak" role="alert"></p>
+      <button class="btn-primary w-full" id="join-submit">Připojit se</button>
+    </form>
+
+    <form id="create-form" class="card p-5 space-y-3" novalidate>
+      <h2 class="font-semibold">Založit třídu <span class="text-muted font-normal text-sm">(pro učitele)</span></h2>
+      <div>
+        <label class="label" for="name">Název třídy</label>
+        <input class="input" id="name" maxlength="80" placeholder="např. 4.A – biologie" />
+      </div>
+      <p class="text-xs text-muted">Dostaneš kód, který dáš žákům. Další učitele můžeš přidat později.</p>
+      <p id="create-error" class="text-sm text-weak" role="alert"></p>
+      <button class="btn-ghost w-full" id="create-submit">Založit třídu</button>
+    </form>
+  </div>
+
+  <h2 class="text-lg font-semibold mt-8 mb-3">Moje třídy</h2>
+  <div id="groups" class="grid gap-3">
+    <p class="text-muted text-sm">Načítám…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { esc, plural } from "../lib/dom.js";
+  import { roleChip } from "../lib/groups.js";
+
+  const list = document.getElementById("groups");
+
+  function card(g) {
+    const teachers = g.teachers.map((t) => esc(t.display_name)).join(", ");
+    return `
+      <a href="/group?id=${g.id}" class="card p-4 flex flex-col sm:flex-row sm:items-center gap-2 hover:border-accent">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold">${esc(g.name)}</span>
+            ${roleChip(g.role)}
+          </div>
+          <div class="text-xs text-muted mt-1">
+            ${g.student_count} ${plural(g.student_count, "žák", "žáci", "žáků")} · ${plural(g.teachers.length, "Učitel", "Učitelé", "Učitelé")}: ${teachers}
+          </div>
+        </div>
+        ${g.join_code ? `<span class="text-sm text-muted">Kód: <b class="font-mono text-ink tracking-widest">${esc(g.join_code)}</b></span>` : ""}
+      </a>`;
+  }
+
+  async function load() {
+    try {
+      const groups = await api("/api/groups");
+      list.innerHTML = groups.length
+        ? groups.map(card).join("")
+        : `<p class="text-muted text-sm">Zatím nejsi v žádné třídě.</p>`;
+    } catch (err) {
+      list.innerHTML = `<p class="text-weak text-sm">${esc(err.message)}</p>`;
+    }
+  }
+
+  // oba formulare funguji stejne: poslat, pri uspechu otevrit tridu, pri chybe ukazat hlasku
+  function setupForm(formId, errorId, buttonId, send) {
+    const form = document.getElementById(formId);
+    const errorEl = document.getElementById(errorId);
+    const btn = document.getElementById(buttonId);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.textContent = "";
+      btn.disabled = true;
+      try {
+        const group = await send();
+        location.href = `/group?id=${group.id}`;
+      } catch (err) {
+        errorEl.textContent = err.message;
+        btn.disabled = false;
+      }
+    });
+  }
+
+  setupForm("join-form", "join-error", "join-submit", () => {
+    const code = document.getElementById("code").value.trim();
+    if (!code) throw new Error("Napiš kód, který ti dal učitel.");
+    return api("/api/groups/join", { method: "POST", body: { code } });
+  });
+  setupForm("create-form", "create-error", "create-submit", () => {
+    const name = document.getElementById("name").value.trim();
+    if (!name) throw new Error("Napiš název třídy.");
+    return api("/api/groups", { method: "POST", body: { name } });
+  });
+
+  load();
+</script>

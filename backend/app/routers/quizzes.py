@@ -22,7 +22,7 @@ from ..schemas import (
 router = APIRouter(prefix="/api/quizzes", tags=["Testy"])
 
 
-def _result(quiz: Quiz, before: dict[int, int | None] | None = None, xp: int = 0) -> QuizResultOut:
+def quiz_result(quiz: Quiz, before: dict[int, int | None] | None = None, xp: int = 0) -> QuizResultOut:
     """Vyhodnocení odevzdaného testu: správné odpovědi, vysvětlení a výsledek po podtématech."""
     per_subtopic: dict[int, SubtopicScore] = {}
     for q in quiz.questions:
@@ -78,7 +78,7 @@ def quiz_detail(quiz_id: int, user: User = Depends(get_current_user), db: Sessio
             QuestionOut(id=q.id, text=q.text, options=q.options, subtopic_name=q.subtopic.name)
             for q in quiz.questions
         ],
-        result=_result(quiz) if completed else None,
+        result=quiz_result(quiz) if completed else None,
     )
 
 
@@ -111,6 +111,6 @@ def submit_quiz(
     award_xp(user, xp)
     db.commit()
 
-    result = _result(quiz, before, xp)
+    result = quiz_result(quiz, before, xp)
     result.user = UserOut.model_validate(user)
     return result

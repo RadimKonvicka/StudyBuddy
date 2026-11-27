@@ -1,0 +1,218 @@
+---
+// detail tridy: ucitel vidi prehled zaku, kod pro pripojeni a spravu clenu; zak jen zakladni info
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Třída">
+  <div id="group" class="max-w-4xl mx-auto">
+    <p class="text-muted text-sm">Načítám…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { getUser } from "../lib/auth.js";
+  import { esc, plural, toast } from "../lib/dom.js";
+  import { lastActive, levelOf, roleChip } from "../lib/groups.js";
+  import { idFromUrl, masteryBar } from "../lib/learning.js";
+
+  const root = document.getElementById("group");
+  const groupId = idFromUrl();
+  const myId = getUser()?.id;
+  let group = null;
+
+  // --- ucitel ---
+
+  function studentsTable() {
+    if (!group.students.length) {
+      return `<div class="card p-5 text-sm text-muted">Zatím se nikdo nepřipojil. Dej žákům kód <b class="font-mono text-ink tracking-widest">${esc(group.join_code)}</b>.</div>`;
+    }
+    // nejslabsi zaci nahoru – tem je potreba pomoct nejdriv (netestovani uplne dolu)
+    const rows = [...group.students].sort((a, b) => (a.mastery ?? 101) - (b.mastery ?? 101));
+    return `
+      <div class="card divide-y divide-line">
+        <div class="hidden md:grid grid-cols-[1.4fr_1.6fr_repeat(4,5rem)] gap-3 px-4 py-2 text-xs text-muted">
+          <span>Žák</span><span>Průměrné zvládnutí</span><span class="text-right">Témata</span>
+          <span class="text-right">Testy</span><span class="text-right">XP</span><span class="text-right">Série</span>
+        </div>
+        ${rows.map((s) => `
+          <a href="/student?group=${group.id}&id=${s.user_id}"
+             class="grid md:grid-cols-[1.4fr_1.6fr_repeat(4,5rem)] gap-x-3 gap-y-2 px-4 py-3 items-center hover:bg-surface-2">
+            <div class="min-w-0">
+              <div class="font-medium truncate">${esc(s.display_name)}</div>
+              <div class="text-xs text-muted truncate">Aktivita: ${lastActive(s.last_active_date)}</div>
+            </div>
+            <div>${masteryBar(s.mastery, levelOf(s.mastery))}</div>
+            <div class="text-sm tabular-nums md:text-right"><span class="md:hidden text-muted">Témata: </span>${s.subject_count}</div>
+            <div class="text-sm tabular-nums md:text-right"><span class="md:hidden text-muted">Testy: </span>${s.quizzes_done}</div>
+            <div class="text-sm tabular-nums md:text-right"><span class="md:hidden text-muted">XP: </span>${s.xp}</div>
+            <div class="text-sm tabular-nums md:text-right"><span class="md:hidden text-muted">Série: </span>${s.streak}</div>
+          </a>`).join("")}
+      </div>`;
+  }
+
+  function memberRow(name, actions) {
+    return `
+      <div class="flex flex-wrap items-center gap-2 p-3">
+        <span class="flex-1 min-w-0 truncate">${name}</span>
+        ${actions}
+      </div>`;
+  }
+
+  function membersManagement() {
+    const onlyTeacher = group.teachers.length <= 1;
+    const teachers = group.teachers.map((t) => memberRow(
+      `${esc(t.display_name)}${t.user_id === myId ? ` <span class="text-muted text-sm">(ty)</span>` : ""}`,
+      onlyTeacher ? "" : t.user_id === myId
+        ? `<button class="btn-ghost text-sm" data-confirm="Opravdu odejít?" data-remove="${t.user_id}">Odejít ze třídy</button>`
+        : `<button class="btn-ghost text-sm" data-role="student" data-user="${t.user_id}">Udělat žákem</button>`,
+    ));
+    const students = group.students.map((s) => memberRow(
+      esc(s.display_name) + ` <span class="text-muted text-sm">${esc(s.email)}</span>`,
+      `<button class="btn-ghost text-sm" data-role="teacher" data-user="${s.user_id}">Udělat učitelem</button>
+       <button class="btn-ghost text-sm hover:text-weak" data-confirm="Opravdu odebrat?" data-remove="${s.user_id}">Odebrat</button>`,
+    ));
+    return `
+      <h2 class="text-lg font-semibold mt-8 mb-2">Učitelé</h2>
+      <div class="card divide-y divide-line">${teachers.join("")}</div>
+      ${onlyTeacher ? `<p class="text-xs text-muted mt-1">Dalšího učitele přidáš tak, že se připojí kódem a ty ho pak níže uděláš učitelem.</p>` : ""}
+      ${students.length ? `
+        <h2 class="text-lg font-semibold mt-6 mb-2">Žáci</h2>
+        <div class="card divide-y divide-line">${students.join("")}</div>` : ""}`;
+  }
+
+  function renderTeacher() {
+    return `
+      <div class="card p-5 mt-4 flex flex-wrap items-center gap-4">
+        <div>
+          <div class="text-sm text-muted">Kód pro připojení</div>
+          <div class="text-3xl font-mono font-semibold tracking-[0.3em]">${esc(group.join_code)}</div>
+        </div>
+        <div class="flex flex-wrap gap-2 sm:ml-auto">
+          <button class="btn-primary" id="copy-code">Kopírovat kód</button>
+          <button class="btn-ghost" id="new-code" data-confirm="Starý kód přestane platit. Opravdu?">Nový kód</button>
+        </div>
+        <p class="text-xs text-muted w-full">Žáci kód zadají v sekci Třídy. Už připojené žáky nový kód neodpojí.</p>
+      </div>
+
+      <h2 class="text-lg font-semibold mt-6 mb-1">Výsledky žáků</h2>
+      <p class="text-sm text-muted mb-3">Seřazeno od nejslabšího. Kliknutím otevřeš témata a testy žáka.</p>
+      ${studentsTable()}
+
+      ${membersManagement()}
+
+      <div class="mt-8 pt-4 border-t border-line">
+        <button class="text-sm text-muted hover:text-weak cursor-pointer" id="delete-group"
+          data-confirm="Ano, smazat třídu">Smazat třídu</button>
+        <p class="text-xs text-muted mt-1">Témata a výsledky žáků zůstanou žákům, smaže se jen třída.</p>
+      </div>`;
+  }
+
+  // --- zak ---
+
+  function renderStudent() {
+    return `
+      <div class="card p-5 mt-4">
+        <p>${plural(group.teachers.length, "Učitel", "Učitelé", "Učitelé")}: <b>${group.teachers.map((t) => esc(t.display_name)).join(", ")}</b></p>
+        <p class="text-sm text-muted mt-2">Učitelé této třídy vidí tvoje témata, zvládnutí podtémat a výsledky testů. Nic ti ale nemůžou změnit ani smazat.</p>
+      </div>
+      <div class="mt-6">
+        <button class="btn-ghost hover:text-weak" data-confirm="Opravdu odejít?" data-remove="${myId}">Odejít ze třídy</button>
+      </div>`;
+  }
+
+  function render() {
+    document.title = `${group.name} | StudyBuddy`;
+    root.innerHTML = `
+      <a href="/groups" class="text-sm text-muted hover:text-ink">← Třídy</a>
+      <div class="flex flex-wrap items-center gap-2 mt-1">
+        <h1 class="text-2xl font-semibold">${esc(group.name)}</h1>
+        ${roleChip(group.role)}
+      </div>
+      <p class="text-sm text-muted">${group.student_count} ${plural(group.student_count, "žák", "žáci", "žáků")}</p>
+      ${group.role === "teacher" ? renderTeacher() : renderStudent()}`;
+    bind();
+  }
+
+  // --- akce ---
+
+  // tlacitka s data-confirm se musi zmacknout dvakrat (prohlizecove confirm() okno neni hezke)
+  function confirmed(btn) {
+    if (!btn.dataset.confirm || btn.dataset.armed) return true;
+    btn.dataset.armed = "1";
+    btn.textContent = btn.dataset.confirm;
+    btn.classList.add("text-weak", "font-medium");
+    return false;
+  }
+
+  async function run(btn, action) {
+    if (!confirmed(btn)) return;
+    btn.disabled = true;
+    try {
+      await action();
+    } catch (err) {
+      toast(err.message, "error");
+      btn.disabled = false;
+    }
+  }
+
+  function bind() {
+    document.getElementById("copy-code")?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(group.join_code);
+        toast("Kód zkopírován.", "success");
+      } catch {
+        toast("Kopírování se nepovedlo, opiš kód ručně.", "error");
+      }
+    });
+
+    const newCode = document.getElementById("new-code");
+    newCode?.addEventListener("click", () => run(newCode, async () => {
+      group = await api(`/api/groups/${groupId}/code`, { method: "POST" });
+      render();
+      toast("Kód je změněný.", "success");
+    }));
+
+    const del = document.getElementById("delete-group");
+    del?.addEventListener("click", () => run(del, async () => {
+      await api(`/api/groups/${groupId}`, { method: "DELETE" });
+      location.href = "/groups";
+    }));
+
+    root.querySelectorAll("[data-role]").forEach((btn) =>
+      btn.addEventListener("click", () => run(btn, async () => {
+        group = await api(`/api/groups/${groupId}/members/${btn.dataset.user}`, {
+          method: "PATCH",
+          body: { role: btn.dataset.role },
+        });
+        render();
+      })),
+    );
+
+    root.querySelectorAll("[data-remove]").forEach((btn) =>
+      btn.addEventListener("click", () => run(btn, async () => {
+        const userId = Number(btn.dataset.remove);
+        await api(`/api/groups/${groupId}/members/${userId}`, { method: "DELETE" });
+        if (userId === myId) {
+          location.href = "/groups";
+        } else {
+          await load();
+        }
+      })),
+    );
+  }
+
+  async function load() {
+    if (!groupId) {
+      root.innerHTML = `<p>Třída nebyla nalezena. <a href="/groups" class="text-accent">Zpět na třídy</a></p>`;
+      return;
+    }
+    try {
+      group = await api(`/api/groups/${groupId}`);
+      render();
+    } catch (err) {
+      root.innerHTML = `<p class="text-weak">${esc(err.message)}</p><a href="/groups" class="text-accent text-sm">Zpět na třídy</a>`;
+    }
+  }
+
+  load();
+</script>

@@ -1,23 +1,37 @@
 ---
-// nove tema: uzivatel napise co se chce naucit, AI pripravi podtemata a vstupni test
+// nove tema: uzivatel napise co se chce naucit, nebo nahraje svoje podklady (zapisky, prezentaci)
+// a AI pripravi podtemata a vstupni test – z podkladu presne podle toho, co v nich je
 import Layout from "../layouts/Layout.astro";
 ---
 <Layout title="Nové téma">
   <div class="max-w-xl mx-auto" id="loading" hidden></div>
   <div class="max-w-xl mx-auto" id="page">
     <h1 class="text-2xl font-semibold">Co se chceš naučit?</h1>
-    <p class="text-muted mt-1">Nejdřív zjistíme, co už umíš, a pak ti připravím materiály přesně na míru.</p>
+    <p class="text-muted mt-1">Napiš téma, nebo nahraj svoje zápisky či prezentaci a testy budou přesně podle nich.</p>
 
     <ol class="grid sm:grid-cols-3 gap-2 mt-5 text-sm">
-      <li class="card p-3"><b class="text-accent">1.</b> Krátký vstupní test</li>
+      <li class="card p-3"><b class="text-accent">1.</b> Krátký vstupní test <span class="text-muted">(jde přeskočit)</span></li>
       <li class="card p-3"><b class="text-accent">2.</b> Výklad podle toho, co ti nejde</li>
       <li class="card p-3"><b class="text-accent">3.</b> Procvičování a kartičky</li>
     </ol>
 
     <form id="new-form" class="card p-5 space-y-4 mt-5" novalidate>
       <div>
-        <label class="label" for="title">Téma</label>
-        <input class="input" id="title" name="title" maxlength="120" required
+        <label class="label" for="files">Podklady <span class="text-muted font-normal">(nepovinné)</span></label>
+        <label id="drop" for="files"
+          class="flex flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-line bg-surface-2 px-4 py-6 text-center cursor-pointer hover:border-accent">
+          <span class="font-medium">Přetáhni sem soubory nebo klikni a vyber</span>
+          <span class="text-xs text-muted">PDF, Word (DOCX), PowerPoint (PPTX), TXT · max. 5 souborů po 10 MB</span>
+        </label>
+        <input id="files" type="file" multiple class="sr-only" accept=".pdf,.docx,.pptx,.txt,.md" />
+        <ul id="file-list" class="mt-2 space-y-1 text-sm"></ul>
+        <p id="files-note" class="text-xs text-muted mt-1" hidden>
+          Podtémata, výklad, kartičky i testy se udělají jen z toho, co je v podkladech.
+        </p>
+      </div>
+      <div>
+        <label class="label" for="title">Téma <span id="title-optional" class="text-muted font-normal" hidden>(nepovinné – jinak podle názvu souboru)</span></label>
+        <input class="input" id="title" name="title" maxlength="120"
           placeholder="např. Fotosyntéza, Kvadratické rovnice, První světová válka" />
       </div>
       <div>
@@ -26,6 +40,13 @@ import Layout from "../layouts/Layout.astro";
           placeholder="Ročník, typ školy, co už umíš nebo na co se chceš zaměřit…"></textarea>
         <p class="text-xs text-muted mt-1">Podle toho AI nastaví obtížnost.</p>
       </div>
+      <label class="flex items-start gap-3 rounded-md border border-line p-3 cursor-pointer hover:border-accent">
+        <input type="checkbox" id="skip-entry" class="mt-1 accent-accent" />
+        <span>
+          <span class="font-medium">Začínám úplně od nuly</span>
+          <span class="block text-sm text-muted">Přeskočit vstupní test. Nejdřív se látku naučíš z výkladu, testy přijdou až potom.</span>
+        </span>
+      </label>
       <p id="new-error" class="text-sm text-weak" role="alert"></p>
       <button class="btn-primary w-full" id="new-submit">Vytvořit vstupní test</button>
     </form>
@@ -34,29 +55,130 @@ import Layout from "../layouts/Layout.astro";
 
 <script>
   import { api } from "../lib/api.js";
+  import { esc } from "../lib/dom.js";
   import { AI_TIMEOUT, aiLoading } from "../lib/learning.js";
+
+  const MAX_FILES = 5;
+  const MAX_MB = 10;
+  const ALLOWED = [".pdf", ".docx", ".pptx", ".txt", ".md"];
 
   const form = document.getElementById("new-form");
   const errorEl = document.getElementById("new-error");
   const page = document.getElementById("page");
   const loading = document.getElementById("loading");
+  const input = document.getElementById("files");
+  const drop = document.getElementById("drop");
+  const list = document.getElementById("file-list");
+
+  let files = []; // vybrane soubory (drzime si je sami, aby sly pridavat postupne a odebirat)
+
+  const ext = (name) => name.slice(name.lastIndexOf(".")).toLowerCase();
+  const size = (bytes) => (bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} kB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+
+  function addFiles(newFiles) {
+    errorEl.textContent = "";
+    for (const f of newFiles) {
+      if (!ALLOWED.includes(ext(f.name))) {
+        errorEl.textContent = `„${f.name}“: podporované jsou jen soubory PDF, DOCX, PPTX, TXT a MD.`;
+      } else if (f.size > MAX_MB * 1024 * 1024) {
+        errorEl.textContent = `„${f.name}“ je větší než ${MAX_MB} MB.`;
+      } else if (files.length >= MAX_FILES) {
+        errorEl.textContent = `Najednou jde nahrát nejvýš ${MAX_FILES} souborů.`;
+      } else if (!files.some((x) => x.name === f.name && x.size === f.size)) {
+        files.push(f);
+      }
+    }
+    renderFiles();
+  }
+
+  function renderFiles() {
+    list.innerHTML = files
+      .map((f, i) => `
+        <li class="flex items-center gap-2 rounded-md border border-line px-3 py-1.5">
+          <span class="flex-1 truncate">${esc(f.name)}</span>
+          <span class="text-xs text-muted">${size(f.size)}</span>
+          <button type="button" class="text-muted hover:text-weak" data-remove="${i}" aria-label="Odebrat ${esc(f.name)}">✕</button>
+        </li>`)
+      .join("");
+    const has = files.length > 0;
+    document.getElementById("files-note").hidden = !has;
+    document.getElementById("title-optional").hidden = !has;
+    updateSubmit();
+  }
+
+  const skip = document.getElementById("skip-entry");
+
+  function updateSubmit() {
+    const has = files.length > 0;
+    document.getElementById("new-submit").textContent = skip.checked
+      ? (has ? "Připravit studijní plán z podkladů" : "Připravit studijní plán")
+      : (has ? "Vytvořit test z podkladů" : "Vytvořit vstupní test");
+  }
+  skip.addEventListener("change", updateSubmit);
+
+  input.addEventListener("change", () => {
+    addFiles(input.files);
+    input.value = ""; // aby slo vybrat stejny soubor znovu
+  });
+  list.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-remove]");
+    if (!btn) return;
+    files.splice(Number(btn.dataset.remove), 1);
+    renderFiles();
+  });
+
+  // pretazeni souboru mysi
+  for (const type of ["dragenter", "dragover"]) {
+    drop.addEventListener(type, (e) => {
+      e.preventDefault();
+      drop.classList.add("border-accent");
+    });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    drop.addEventListener(type, () => drop.classList.remove("border-accent"));
+  }
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    addFiles(e.dataTransfer.files);
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     errorEl.textContent = "";
-    const data = Object.fromEntries(new FormData(form));
-    if (data.title.trim().length < 2) {
-      errorEl.textContent = "Napiš téma, které se chceš naučit.";
+    const title = form.title.value.trim();
+    const level = form.level.value.trim();
+    if (!files.length && title.length < 2) {
+      errorEl.textContent = "Napiš téma, které se chceš naučit, nebo nahraj podklady.";
       return;
     }
 
+    const skipEntry = skip.checked;
+    const what = skipEntry ? "studijní plán" : "podtémata a vstupní test";
+
     // behem generovani schovame formular a ukazeme cekani
-    loading.innerHTML = aiLoading(`Připravuji podtémata a vstupní test: ${data.title.trim()}`);
+    loading.innerHTML = aiLoading(
+      files.length ? `Čtu tvoje podklady a připravuji ${what}` : `Připravuji ${what}: ${title}`
+    );
     page.hidden = true;
     loading.hidden = false;
     try {
-      const subject = await api("/api/subjects", { method: "POST", body: data, timeout: AI_TIMEOUT });
-      location.href = `/quiz?id=${subject.entry_quiz_id}`;
+      let subject;
+      if (files.length) {
+        const data = new FormData();
+        data.append("title", title);
+        data.append("level", level);
+        data.append("skip_entry", String(skipEntry));
+        for (const f of files) data.append("files", f);
+        subject = await api("/api/subjects/upload", { method: "POST", form: data, timeout: AI_TIMEOUT });
+      } else {
+        subject = await api("/api/subjects", {
+          method: "POST",
+          body: { title, level, skip_entry: skipEntry },
+          timeout: AI_TIMEOUT,
+        });
+      }
+      // bez vstupniho testu jde student rovnou na studijni plan
+      location.href = subject.entry_quiz_id ? `/quiz?id=${subject.entry_quiz_id}` : `/subject?id=${subject.id}`;
     } catch (err) {
       loading.hidden = true;
       page.hidden = false;

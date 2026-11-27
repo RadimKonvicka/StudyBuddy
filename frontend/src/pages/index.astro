@@ -36,7 +36,8 @@ import Layout from "../layouts/Layout.astro";
   }
 
   function subjectCard(s) {
-    const action = s.entry_done
+    const started = s.entry_done || s.entry_skipped; // bez vstupniho testu se studuje rovnou
+    const action = started
       ? `<a href="/subject?id=${s.id}" class="btn-ghost">Studovat</a>`
       : `<a href="/quiz?id=${s.entry_quiz_id}" class="btn-primary">Udělat vstupní test</a>`;
     return `
@@ -44,7 +45,9 @@ import Layout from "../layouts/Layout.astro";
         <div class="flex-1 min-w-0">
           <a href="/subject?id=${s.id}" class="font-semibold hover:text-accent">${esc(s.title)}</a>
           <div class="text-xs text-muted mb-2">${s.subtopic_count} podtémat${s.level ? " · " + esc(s.level) : ""}</div>
-          ${s.entry_done ? masteryBar(s.mastery, levelOf(s.mastery)) : `<div class="text-xs text-mid">Vstupní test čeká na vyplnění</div>`}
+          ${s.entry_skipped && s.mastery === null
+            ? `<div class="text-xs text-muted">Od nuly · zatím bez testu</div>`
+            : started ? masteryBar(s.mastery, levelOf(s.mastery)) : `<div class="text-xs text-mid">Vstupní test čeká na vyplnění</div>`}
         </div>
         ${action}
       </div>`;

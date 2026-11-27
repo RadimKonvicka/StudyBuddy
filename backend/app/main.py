@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from . import models  # noqa: F401  – registrace tabulek před create_all
 from .config import get_settings
 from .database import Base, engine
-from .routers import auth, quizzes, review, subjects
+from .routers import auth, groups, quizzes, review, subjects
 
 settings = get_settings()
 
@@ -36,6 +36,9 @@ _FIELD_NAMES = {
     "title": "Téma",
     "level": "Poznámka",
     "answers": "Odpovědi",
+    "name": "Název třídy",
+    "code": "Kód třídy",
+    "role": "Role",
 }
 
 
@@ -67,6 +70,7 @@ app.include_router(auth.router)
 app.include_router(subjects.router)
 app.include_router(quizzes.router)
 app.include_router(review.router)
+app.include_router(groups.router)
 
 
 @app.get("/api/health", tags=["Systém"])

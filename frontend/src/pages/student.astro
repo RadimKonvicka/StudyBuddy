@@ -1,0 +1,157 @@
+---
+// vysledky jednoho zaka pro ucitele (jen ke cteni): temata, zvladnuti podtemat, testy a odpovedi
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Žák">
+  <div id="student" class="max-w-4xl mx-auto">
+    <p class="text-muted text-sm">Načítám…</p>
+  </div>
+</Layout>
+
+<script>
+  import { api } from "../lib/api.js";
+  import { esc, plural, toast } from "../lib/dom.js";
+  import { lastActive, levelOf } from "../lib/groups.js";
+  import { idFromUrl, masteryBar } from "../lib/learning.js";
+
+  const LETTERS = ["A", "B", "C", "D"];
+  const root = document.getElementById("student");
+  const params = new URLSearchParams(location.search);
+  const groupId = Number(params.get("group")) || null;
+  const studentId = idFromUrl();
+  const base = `/api/groups/${groupId}/students/${studentId}`;
+
+  function stat(label, value) {
+    return `<div class="card p-4"><div class="text-sm text-muted">${label}</div><div class="text-xl font-semibold tabular-nums">${value}</div></div>`;
+  }
+
+  function quizLabel(q) {
+    return q.kind === "entry" ? "Vstupní test" : `Procvičování: ${esc(q.subtopic_name)}`;
+  }
+
+  function subjectCard(subj) {
+    const status = subj.entry_done
+      ? ""
+      : subj.entry_skipped
+        ? `<span class="chip bg-surface-2 text-muted">Začíná od nuly</span>`
+        : `<span class="chip bg-surface-2 text-mid">Vstupní test nevyplněn</span>`;
+    return `
+      <div class="card p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="font-semibold">${esc(subj.title)}</h3>
+          ${subj.from_materials ? `<span class="chip bg-surface-2 text-muted">Z vlastních podkladů</span>` : ""}
+          ${status}
+        </div>
+        ${subj.level ? `<p class="text-xs text-muted">${esc(subj.level)}</p>` : ""}
+        <div class="mt-2">${masteryBar(subj.mastery, levelOf(subj.mastery))}</div>
+
+        <div class="mt-4 grid gap-2">
+          ${subj.subtopics.map((s) => `
+            <div class="grid sm:grid-cols-[1fr_16rem] gap-1 sm:gap-3 items-center text-sm">
+              <div class="min-w-0">
+                <span class="truncate">${esc(s.name)}</span>
+                <span class="text-xs text-muted">${s.has_lesson ? " · výklad přečten" : ""}${s.cards ? ` · ${s.cards} ${plural(s.cards, "kartička", "kartičky", "kartiček")}` : ""}</span>
+              </div>
+              ${masteryBar(s.mastery, s.level)}
+            </div>`).join("")}
+        </div>
+
+        ${subj.quizzes.length ? `
+          <details class="mt-4">
+            <summary class="text-sm text-accent cursor-pointer">Testy (${subj.quizzes.length})</summary>
+            <div class="mt-2 divide-y divide-line border border-line rounded-md text-sm">
+              ${subj.quizzes.map((q) => `
+                <div>
+                  <div class="flex items-center justify-between gap-3 p-3">
+                    <span>${quizLabel(q)} <span class="text-xs text-muted">${new Date(q.created_at).toLocaleDateString("cs-CZ")}</span></span>
+                    <span class="flex items-center gap-3">
+                      <span class="tabular-nums ${q.completed ? "" : "text-mid"}">${q.completed ? `${q.score} / ${q.total}` : "Nevyplněno"}</span>
+                      ${q.completed ? `<button class="text-accent hover:underline cursor-pointer" data-quiz="${q.id}">Odpovědi</button>` : ""}
+                    </span>
+                  </div>
+                  <div class="px-3 pb-3" id="answers-${q.id}" hidden></div>
+                </div>`).join("")}
+            </div>
+          </details>` : ""}
+      </div>`;
+  }
+
+  function answers(result) {
+    return `
+      <div class="grid gap-2">
+        ${result.questions.map((q, i) => `
+          <div class="rounded-md border-l-4 ${q.is_correct ? "border-l-strong" : "border-l-weak"} bg-surface-2 px-3 py-2">
+            <p class="font-medium"><span class="text-muted">${i + 1}.</span> ${esc(q.text)}</p>
+            <p class="text-xs text-muted">${esc(q.subtopic_name)}</p>
+            <ul class="mt-1 grid gap-0.5">
+              ${q.options.map((opt, j) => {
+                const isRight = j === q.correct;
+                const isChosen = j === q.chosen;
+                const cls = isRight ? "text-strong font-medium" : isChosen ? "text-weak line-through" : "text-muted";
+                const tag = isRight ? " ✓" : isChosen ? " (odpověď žáka)" : "";
+                return `<li class="${cls}">${LETTERS[j]}) ${esc(opt)}${tag}</li>`;
+              }).join("")}
+            </ul>
+            ${q.chosen === null ? `<p class="text-xs text-mid mt-1">Bez odpovědi</p>` : ""}
+          </div>`).join("")}
+      </div>`;
+  }
+
+  async function toggleAnswers(btn) {
+    const box = document.getElementById(`answers-${btn.dataset.quiz}`);
+    if (!box.hidden) {
+      box.hidden = true;
+      btn.textContent = "Odpovědi";
+      return;
+    }
+    if (!box.innerHTML) {
+      btn.disabled = true;
+      try {
+        box.innerHTML = answers(await api(`${base}/quizzes/${btn.dataset.quiz}`));
+      } catch (err) {
+        toast(err.message, "error");
+        return;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    box.hidden = false;
+    btn.textContent = "Skrýt";
+  }
+
+  function render(s) {
+    document.title = `${s.display_name} | StudyBuddy`;
+    root.innerHTML = `
+      <a href="/group?id=${s.group_id}" class="text-sm text-muted hover:text-ink">← ${esc(s.group_name)}</a>
+      <h1 class="text-2xl font-semibold mt-1">${esc(s.display_name)}</h1>
+      <p class="text-sm text-muted">${esc(s.email)} · ve třídě od ${new Date(s.joined_at).toLocaleDateString("cs-CZ")}</p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+        ${stat("Průměrné zvládnutí", s.mastery === null ? "–" : `${s.mastery} %`)}
+        ${stat("Body XP", s.xp)}
+        ${stat("Série dní", s.streak)}
+        ${stat("Poslední aktivita", lastActive(s.last_active_date))}
+      </div>
+
+      <h2 class="text-lg font-semibold mt-6 mb-3">Témata (${s.subject_count})</h2>
+      <div class="grid gap-3">
+        ${s.subjects.length ? s.subjects.map(subjectCard).join("") : `<p class="text-sm text-muted">Žák si zatím nevytvořil žádné téma.</p>`}
+      </div>`;
+
+    root.querySelectorAll("[data-quiz]").forEach((btn) => btn.addEventListener("click", () => toggleAnswers(btn)));
+  }
+
+  async function load() {
+    if (!groupId || !studentId) {
+      root.innerHTML = `<p>Žák nebyl nalezen. <a href="/groups" class="text-accent">Zpět na třídy</a></p>`;
+      return;
+    }
+    try {
+      render(await api(base));
+    } catch (err) {
+      root.innerHTML = `<p class="text-weak">${esc(err.message)}</p><a href="/groups" class="text-accent text-sm">Zpět na třídy</a>`;
+    }
+  }
+
+  load();
+</script>
